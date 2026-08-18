@@ -1,0 +1,47 @@
+# ===== Go (server/) =====
+server/*.exe
+server/*.exe~
+server/*.dll
+server/*.so
+server/*.dylib
+server/*.test
+server/*.out
+/server/bin/
+/server/tmp/
+/server/vendor/
+
+# ===== Unity (client/) =====
+client/Library/
+client/Temp/
+client/Obj/
+client/Build/
+client/Builds/
+client/Logs/
+client/UserSettings/
+client/MemoryCaptures/
+client/[Rr]ecordings/
+client/.vs/
+client/*.pidb
+client/*.pidb.meta
+client/*.pdb
+client/*.mdb
+client/*.opendb
+client/*.VC.db
+client/*.csproj
+client/*.unityproj
+client/*.sln
+client/*.suo
+client/*.tmp
+client/*.user
+client/*.userprefs
+client/sysinfo.txt
+client/crashlytics-build.properties
+client/Assets/AssetStoreTools*
+client/Assets/Plugins/Editor/JetBrains*
+
+# Unity crash logs
+client/*.hprof
+
+# OS junk
+.DS_Store
+Thumbs.db
