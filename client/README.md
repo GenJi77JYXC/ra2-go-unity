@@ -1,16 +1,22 @@
 # client/ — Unity 工程
 
-这个目录用来放 Unity 客户端工程本体,目前还未创建,按下面步骤在**这个目录里**创建:
+Unity 客户端工程本体在 **`client/ra2-unity/`**。
+
+> Unity Hub 的 "Location" 只是父目录,实际工程会自动建在 `<Location>/<Project name>/` 下,没法让它直接落在 `client/` 里——所以选 Location 为 `client/`、Project name 为 `ra2-unity` 之后,工程实际路径就是 `client/ra2-unity/`。根目录的 `.gitignore` 已经按这个路径覆盖了 `client/ra2-unity/Library`、`client/ra2-unity/Temp` 等不需要入库的产物。
+
+当前用的 Editor 版本:**6000.5.8f1**。
+
+如果要重新创建:
 
 1. 打开 Unity Hub → New Project
-2. Editor 版本选 2022.3 LTS(或更新的 LTS)
+2. Editor 版本选已装的 6000.5.8f1(或更新的 LTS)
 3. Template 选 2D(Core / URP 均可)
-4. **Location 直接指向本仓库的 `client/` 目录**(不要新建子文件夹),Project name 随意
-5. 创建完成后,Unity 会在这里生成 `Assets/`、`Packages/`、`ProjectSettings/` 等标准目录,根目录的 `.gitignore` 已经覆盖了 `client/Library`、`client/Temp` 等不需要入库的产物
+4. Location 选本仓库的 `client/` 目录,Project name 填 `ra2-unity`
+5. 创建完成后,Unity 会在 `client/ra2-unity/` 生成 `Assets/`、`Packages/`、`ProjectSettings/` 等标准目录
 
 ## 推荐的 Scripts 目录结构(对照学习计划各 Phase)
 
-创建好工程后,在 `Assets/Scripts/` 下建议按职责分层,而不是按 Phase 分:
+创建好工程后,在 `ra2-unity/Assets/Scripts/` 下建议按职责分层,而不是按 Phase 分:
 
 ```
 Assets/Scripts/
@@ -28,8 +34,8 @@ Assets/Scripts/
 
 按学习计划的建议,先不写渲染代码:
 
-1. 用 `System.Net.WebSockets.ClientWebSocket` 写一个最小的 `ReceiveLoop()`,连上 `server/` 跑起来的 `ws://localhost:8080/ws`
-2. 收到消息先 `Debug.Log`,确认协议通了(注意此时 `server/network/server.go` 里的 WebSocket upgrade 还是 TODO 占位,要先按 `server/` 的 TODO 接入 `nhooyr.io/websocket` 才能真正连通)
+1. 用 `System.Net.WebSockets.ClientWebSocket` 写一个最小的 `ReceiveLoop()`,连上 `server/` 跑起来的 `ws://localhost:8080/ws`(服务端 WebSocket 已经实现好了,直接 `go run .` 启动即可)
+2. 收到消息先 `Debug.Log`,确认协议通了
 3. 协议确认没问题后,再加 `GameManager` + `Vector3.Lerp` 渲染红色方块移动
 
 详见仓库根目录的学习计划文档 Phase 1 部分。

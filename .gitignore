@@ -10,37 +10,39 @@ server/*.out
 /server/tmp/
 /server/vendor/
 
-# ===== Unity (client/) =====
-client/Library/
-client/Temp/
-client/Obj/
-client/Build/
-client/Builds/
-client/Logs/
-client/UserSettings/
-client/MemoryCaptures/
-client/[Rr]ecordings/
-client/.vs/
-client/*.pidb
-client/*.pidb.meta
-client/*.pdb
-client/*.mdb
-client/*.opendb
-client/*.VC.db
-client/*.csproj
-client/*.unityproj
-client/*.sln
-client/*.suo
-client/*.tmp
-client/*.user
-client/*.userprefs
-client/sysinfo.txt
-client/crashlytics-build.properties
-client/Assets/AssetStoreTools*
-client/Assets/Plugins/Editor/JetBrains*
+# ===== Unity (client/ra2-unity/) =====
+# Unity Hub always creates <Location>/<ProjectName>/, so the actual project
+# root is client/ra2-unity/, not client/ itself.
+client/ra2-unity/Library/
+client/ra2-unity/Temp/
+client/ra2-unity/Obj/
+client/ra2-unity/Build/
+client/ra2-unity/Builds/
+client/ra2-unity/Logs/
+client/ra2-unity/UserSettings/
+client/ra2-unity/MemoryCaptures/
+client/ra2-unity/[Rr]ecordings/
+client/ra2-unity/.vs/
+client/ra2-unity/*.pidb
+client/ra2-unity/*.pidb.meta
+client/ra2-unity/*.pdb
+client/ra2-unity/*.mdb
+client/ra2-unity/*.opendb
+client/ra2-unity/*.VC.db
+client/ra2-unity/*.csproj
+client/ra2-unity/*.unityproj
+client/ra2-unity/*.sln
+client/ra2-unity/*.suo
+client/ra2-unity/*.tmp
+client/ra2-unity/*.user
+client/ra2-unity/*.userprefs
+client/ra2-unity/sysinfo.txt
+client/ra2-unity/crashlytics-build.properties
+client/ra2-unity/Assets/AssetStoreTools*
+client/ra2-unity/Assets/Plugins/Editor/JetBrains*
 
 # Unity crash logs
-client/*.hprof
+client/ra2-unity/*.hprof
 
 # OS junk
 .DS_Store
