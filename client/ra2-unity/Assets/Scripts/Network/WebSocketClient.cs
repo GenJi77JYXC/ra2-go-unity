@@ -83,6 +83,32 @@ public class WebSocketClient : MonoBehaviour
         }
     }
 
+    // Fire-and-forget: callers (e.g. InputHandler.Update) must not await this,
+    // so serialization happens synchronously here and the actual socket
+    // write is kicked off without waiting for it to finish.
+    public void Send(ClientCommand cmd)
+    {
+        if (socket == null || socket.State != WebSocketState.Open)
+        {
+            return;
+        }
+
+        _ = SendAsync(JsonUtility.ToJson(cmd));
+    }
+
+    private async Task SendAsync(string json)
+    {
+        try
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(json);
+            await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cts.Token);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[WebSocketClient] send failed: {e.Message}");
+        }
+    }
+
     private void OnDestroy()
     {
         cts?.Cancel();
