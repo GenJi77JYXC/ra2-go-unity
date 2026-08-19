@@ -21,9 +21,4 @@ type ClientCommand struct {
 	UnitIDs []int   `json:"unitIds"`
 	TargetX float64 `json:"targetX"`
 	TargetY float64 `json:"targetY"`
-
-	// TODO(Phase 2): every handler for this command must verify the
-	// requesting connection actually owns UnitIDs before acting on them.
-	// Add the check now (even with a hardcoded Owner=1) so Phase 6
-	// multiplayer doesn't need to retrofit it everywhere.
 }

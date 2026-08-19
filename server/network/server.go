@@ -12,25 +12,40 @@ import (
 	"github.com/coder/websocket"
 )
 
+// defaultOwner is hardcoded until Phase 6 gives connections real player
+// identity — every command is treated as coming from player 1.
+const defaultOwner = 1
+
 // Server owns the HTTP endpoint and all connected clients.
 //
 // Client bookkeeping (registering/removing connections) is guarded by mu.
 // This is separate from the World-mutation rule in main.go: World is only
 // ever touched by the tick-loop goroutine, but the connection map is pure
-// network state, so an ordinary mutex is fine here.
+// network state, so an ordinary mutex is fine here. Commands parsed off a
+// connection go through the commands channel instead, so main.go's tick
+// loop — not this per-connection goroutine — is what actually calls into
+// World.
 type Server struct {
 	world *game.World
 
 	mu      sync.Mutex
 	clients map[*Client]struct{}
 	nextID  int
+
+	commands chan game.Command
 }
 
 func NewServer(world *game.World) *Server {
 	return &Server{
-		world:   world,
-		clients: make(map[*Client]struct{}),
+		world:    world,
+		clients:  make(map[*Client]struct{}),
+		commands: make(chan game.Command, 32),
 	}
+}
+
+// Commands is drained by main.go's tick loop once per tick.
+func (s *Server) Commands() <-chan game.Command {
+	return s.commands
 }
 
 func (s *Server) ListenAndServe(addr string) {
@@ -53,12 +68,38 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	go client.writePump()
 
-	// Phase 1 only broadcasts state; it doesn't process client -> server
-	// messages yet (that's Phase 2's move command). CloseRead discards
-	// anything the client sends and cancels ctx once the connection closes,
-	// which is what we use to detect disconnects.
-	ctx := conn.CloseRead(context.Background())
-	<-ctx.Done()
+	s.readCommands(conn)
+}
+
+// readCommands blocks reading messages from conn until it closes or errors,
+// forwarding valid move commands to s.commands. This replaces Phase 1's
+// CloseRead placeholder — actively reading is also what makes the
+// underlying library handle ping/pong control frames, regardless of
+// whether the payload itself is interesting.
+func (s *Server) readCommands(conn *websocket.Conn) {
+	ctx := context.Background()
+	for {
+		_, data, err := conn.Read(ctx)
+		if err != nil {
+			return
+		}
+
+		var cmd ClientCommand
+		if err := json.Unmarshal(data, &cmd); err != nil {
+			log.Printf("bad client command: %v", err)
+			continue
+		}
+
+		if cmd.Type != "move" {
+			continue // "attack" (Phase 4) / "build" (Phase 5) aren't handled yet
+		}
+
+		select {
+		case s.commands <- toGameCommand(cmd):
+		default:
+			log.Printf("command buffer full, dropping command")
+		}
+	}
 }
 
 func (s *Server) addClient(conn *websocket.Conn) *Client {
@@ -103,4 +144,13 @@ func toGameState(snapshot game.Snapshot) GameState {
 		units[i] = UnitSnapshot{ID: u.ID, X: u.X, Y: u.Y}
 	}
 	return GameState{Tick: snapshot.Tick, Units: units}
+}
+
+func toGameCommand(cmd ClientCommand) game.Command {
+	return game.Command{
+		UnitIDs: cmd.UnitIDs,
+		TargetX: cmd.TargetX,
+		TargetY: cmd.TargetY,
+		Owner:   defaultOwner,
+	}
 }
