@@ -47,3 +47,6 @@ client/ra2-unity/*.hprof
 # OS junk
 .DS_Store
 Thumbs.db
+
+# ===== personal blog drafts (published elsewhere, not part of the repo) =====
+/blog/
