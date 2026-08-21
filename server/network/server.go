@@ -32,20 +32,47 @@ type Server struct {
 	clients map[*Client]struct{}
 	nextID  int
 
-	commands chan game.Command
+	commands   chan game.Command
+	newClients chan *Client
 }
 
 func NewServer(world *game.World) *Server {
 	return &Server{
-		world:    world,
-		clients:  make(map[*Client]struct{}),
-		commands: make(chan game.Command, 32),
+		world:      world,
+		clients:    make(map[*Client]struct{}),
+		commands:   make(chan game.Command, 32),
+		newClients: make(chan *Client, 8),
 	}
 }
 
 // Commands is drained by main.go's tick loop once per tick.
 func (s *Server) Commands() <-chan game.Command {
 	return s.commands
+}
+
+// DrainNewClients sends the current full world state — including the
+// static map, which regular Broadcast calls never include — to every
+// client that connected since the last tick. Like HandleCommand, this must
+// only ever be called from the tick-loop goroutine: it reads s.world
+// directly, which is only safe there.
+func (s *Server) DrainNewClients() {
+	for {
+		select {
+		case client := <-s.newClients:
+			s.sendInitialSnapshot(client)
+		default:
+			return
+		}
+	}
+}
+
+func (s *Server) sendInitialSnapshot(client *Client) {
+	data, err := json.Marshal(initialGameState(s.world))
+	if err != nil {
+		log.Printf("marshal initial snapshot failed: %v", err)
+		return
+	}
+	client.Send(data)
 }
 
 func (s *Server) ListenAndServe(addr string) {
@@ -110,6 +137,13 @@ func (s *Server) addClient(conn *websocket.Conn) *Client {
 	client := newClient(s.nextID, conn)
 	s.clients[client] = struct{}{}
 	log.Printf("client %d connected (total=%d)", client.ID, len(s.clients))
+
+	select {
+	case s.newClients <- client:
+	default:
+		log.Printf("new-client buffer full, client %d won't get initial map snapshot", client.ID)
+	}
+
 	return client
 }
 
@@ -139,11 +173,37 @@ func (s *Server) Broadcast(snapshot game.Snapshot) {
 }
 
 func toGameState(snapshot game.Snapshot) GameState {
-	units := make([]UnitSnapshot, len(snapshot.Units))
-	for i, u := range snapshot.Units {
-		units[i] = UnitSnapshot{ID: u.ID, X: u.X, Y: u.Y}
+	return GameState{Tick: snapshot.Tick, Units: toUnitSnapshots(snapshot.Units)}
+}
+
+// initialGameState is the one-off full-state message a new connection gets
+// (see DrainNewClients) — it's the only GameState that carries the map.
+func initialGameState(world *game.World) GameState {
+	m := world.Map
+	tiles := make([]TileData, 0, m.Width*m.Height)
+	for y := 0; y < m.Height; y++ {
+		for x := 0; x < m.Width; x++ {
+			t := m.Tiles[y][x]
+			tiles = append(tiles, TileData{Type: int(t.Type), Passable: t.Passable})
+		}
 	}
-	return GameState{Tick: snapshot.Tick, Units: units}
+
+	return GameState{
+		Tick:      world.TickCount,
+		IsInitial: true,
+		MapWidth:  m.Width,
+		MapHeight: m.Height,
+		Tiles:     tiles,
+		Units:     toUnitSnapshots(world.Units),
+	}
+}
+
+func toUnitSnapshots(units []*game.Unit) []UnitSnapshot {
+	out := make([]UnitSnapshot, len(units))
+	for i, u := range units {
+		out[i] = UnitSnapshot{ID: u.ID, X: u.X, Y: u.Y}
+	}
+	return out
 }
 
 func toGameCommand(cmd ClientCommand) game.Command {

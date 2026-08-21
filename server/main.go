@@ -20,6 +20,7 @@ func main() {
 
 	for range ticker.C {
 		drainCommands(srv, world)
+		srv.DrainNewClients()
 		world.Tick(dt)
 		srv.Broadcast(world.Snapshot())
 	}
