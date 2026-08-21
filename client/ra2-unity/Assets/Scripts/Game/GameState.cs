@@ -23,6 +23,9 @@ public class UnitSnapshot
     public int id;
     public double x;
     public double y;
+    public int owner; // Phase 4: which player controls this unit
+    public int hp;
+    public int maxHp;
 }
 
 // type is game.TerrainType as a raw int (Grass=0, Road=1, Water=2,
@@ -39,6 +42,7 @@ public class ClientCommand
 {
     public string type;
     public int[] unitIds;
-    public double targetX;
-    public double targetY;
+    public double targetX;    // move
+    public double targetY;    // move
+    public int targetUnitId;  // attack
 }

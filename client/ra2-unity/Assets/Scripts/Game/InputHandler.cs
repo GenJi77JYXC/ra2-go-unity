@@ -1,15 +1,16 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-// Phase 2: right-click on the ground issues a move command for unit 1.
+// Right-click issues an order for whatever SelectionHandler currently has
+// selected: attack if the click landed on an enemy unit, move otherwise.
 // WebSocketClient.Send is fire-and-forget, so this never blocks Update().
 public class InputHandler : MonoBehaviour
 {
     [SerializeField] private WebSocketClient webSocketClient;
     [SerializeField] private Grid grid;
+    [SerializeField] private SelectionHandler selectionHandler;
 
-    // Hardcoded until Phase 4 adds real unit selection.
-    private const int ControlledUnitId = 1;
+    private const int MyOwner = 1; // hardcoded until Phase 6 real player identity
 
     private void Update()
     {
@@ -18,10 +19,28 @@ public class InputHandler : MonoBehaviour
             return;
         }
 
-        // Orthographic camera: X/Y are the same regardless of the input
-        // z-distance, so the default position z (0) is fine here.
+        if (selectionHandler.SelectedUnitIds.Count == 0)
+        {
+            return; // nothing selected, nothing to command
+        }
+
+        int[] unitIds = new int[selectionHandler.SelectedUnitIds.Count];
+        selectionHandler.SelectedUnitIds.CopyTo(unitIds);
+
         Vector3 screenPos = Mouse.current.position.ReadValue();
         Vector3 worldPoint = Camera.main.ScreenToWorldPoint(screenPos);
+
+        UnitView clicked = HitTestUnit(worldPoint);
+        if (clicked != null && clicked.Owner != MyOwner)
+        {
+            webSocketClient.Send(new ClientCommand
+            {
+                type = "attack",
+                unitIds = unitIds,
+                targetUnitId = clicked.UnitId,
+            });
+            return;
+        }
 
         // worldPoint is in isometric-projected screen space (where the
         // tilemap is actually drawn); the server thinks in plain cell
@@ -31,9 +50,15 @@ public class InputHandler : MonoBehaviour
         webSocketClient.Send(new ClientCommand
         {
             type = "move",
-            unitIds = new[] { ControlledUnitId },
+            unitIds = unitIds,
             targetX = cell.x,
             targetY = cell.y,
         });
+    }
+
+    private static UnitView HitTestUnit(Vector3 worldPoint)
+    {
+        Collider2D hit = Physics2D.OverlapPoint(worldPoint);
+        return hit != null ? hit.GetComponent<UnitView>() : null;
     }
 }
