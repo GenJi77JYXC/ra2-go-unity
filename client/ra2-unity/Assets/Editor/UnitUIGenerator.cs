@@ -21,21 +21,28 @@ public static class UnitUIGenerator
             AssetDatabase.CreateFolder("Assets", "Sprites");
         }
 
-        SaveSprite("WhiteSquare", SolidTexture());
-        SaveSprite("SelectionRing", RingTexture());
+        SaveSprite("WhiteSquare", SolidTexture(), Size, Size);
+        SaveSprite("SelectionRing", RingTexture(), Size, Size);
+
+        // Buildings sit on the isometric grid, so their footprint is a
+        // diamond like the terrain tiles — same 2:1 texture aspect, so a
+        // uniform scale of N covers an NxN block of cells exactly.
+        SaveSprite("WhiteDiamond", DiamondTexture(), DiamondWidth, DiamondHeight);
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log($"Generated WhiteSquare and SelectionRing sprites in {OutputDir}.");
+        Debug.Log($"Generated WhiteSquare, SelectionRing and WhiteDiamond sprites in {OutputDir}.");
     }
 
-    private static void SaveSprite(string name, Texture2D texture)
+    private static void SaveSprite(string name, Texture2D texture, int width, int height)
     {
         string path = $"{OutputDir}/{name}.asset";
         AssetDatabase.DeleteAsset(path);
 
         texture.name = name + "Texture";
-        Sprite sprite = Sprite.Create(texture, new Rect(0, 0, Size, Size), new Vector2(0.5f, 0.5f), Size);
+        // pixelsPerUnit = width makes the sprite exactly 1 world unit wide,
+        // so a diamond ends up 1 x 0.5 — one cell at the Grid's Cell Size.
+        Sprite sprite = Sprite.Create(texture, new Rect(0, 0, width, height), new Vector2(0.5f, 0.5f), width);
         sprite.name = name;
 
         // The Sprite is the asset's primary object (not wrapped in
@@ -53,6 +60,30 @@ public static class UnitUIGenerator
         {
             pixels[i] = Color.white;
         }
+        texture.SetPixels(pixels);
+        texture.Apply();
+        return texture;
+    }
+
+    private const int DiamondWidth = 32;
+    private const int DiamondHeight = 16;
+
+    private static Texture2D DiamondTexture()
+    {
+        var texture = new Texture2D(DiamondWidth, DiamondHeight, TextureFormat.RGBA32, false);
+        var pixels = new Color[DiamondWidth * DiamondHeight];
+
+        for (int y = 0; y < DiamondHeight; y++)
+        {
+            for (int x = 0; x < DiamondWidth; x++)
+            {
+                float nx = (x + 0.5f) / DiamondWidth - 0.5f;
+                float ny = (y + 0.5f) / DiamondHeight - 0.5f;
+                bool inside = Mathf.Abs(nx) + Mathf.Abs(ny) <= 0.5f;
+                pixels[y * DiamondWidth + x] = inside ? Color.white : new Color(0f, 0f, 0f, 0f);
+            }
+        }
+
         texture.SetPixels(pixels);
         texture.Apply();
         return texture;

@@ -15,10 +15,66 @@ public class GameManager : MonoBehaviour
     [SerializeField] private GameObject unitPrefab;
     [SerializeField] private MapRenderer mapRenderer;
     [SerializeField] private Grid grid;
+    [SerializeField] private Sprite buildingSprite; // WhiteDiamond
+    [SerializeField] private Sprite barSprite;      // WhiteSquare, for building health bars
     [SerializeField] private float lerpSpeed = 10f;
 
     private readonly Dictionary<int, UnitView> units = new();
     private readonly Dictionary<int, Vector3> targetPositions = new();
+    private readonly Dictionary<int, BuildingView> buildings = new();
+
+    // Economy and the build catalog, surfaced for BuildPanel/
+    // BuildPlacementHandler — GameManager is the only thing that parses
+    // snapshots, so everything else reads game state through it.
+    public int Money { get; private set; }
+    public int Power { get; private set; }
+    public BuildOption[] BuildMenu { get; private set; } = new BuildOption[0];
+    public IEnumerable<BuildingView> Buildings => buildings.Values;
+
+    // The structure currently being built (no map position until placed).
+    public string PendingType { get; private set; } = "";
+    public float PendingProgress { get; private set; }
+    public bool PendingReady { get; private set; }
+
+    private QueueSnapshot[] queues = new QueueSnapshot[0];
+
+    // Production queues are per building type, not per building, so the
+    // panel for any Barracks shows the same queue.
+    public QueueSnapshot FindQueue(string category)
+    {
+        foreach (QueueSnapshot queue in queues)
+        {
+            if (queue.category == category)
+            {
+                return queue;
+            }
+        }
+        return null;
+    }
+
+    public BuildOption FindBuildOption(string type)
+    {
+        foreach (BuildOption option in BuildMenu)
+        {
+            if (option.type == type)
+            {
+                return option;
+            }
+        }
+        return null;
+    }
+
+    public BuildingView BuildingAtCell(int cellX, int cellY)
+    {
+        foreach (BuildingView building in buildings.Values)
+        {
+            if (building.Contains(cellX, cellY))
+            {
+                return building;
+            }
+        }
+        return null;
+    }
 
     private void OnEnable()
     {
@@ -46,7 +102,17 @@ public class GameManager : MonoBehaviour
         if (state.isInitial)
         {
             mapRenderer.Render(state);
+            BuildMenu = state.buildMenu ?? new BuildOption[0];
         }
+
+        Money = state.money;
+        Power = state.power;
+        PendingType = state.pendingType ?? "";
+        PendingProgress = state.pendingProgress;
+        PendingReady = state.pendingReady;
+        queues = state.queues ?? new QueueSnapshot[0];
+
+        SyncBuildings(state);
 
         var seenIds = new HashSet<int>();
 
@@ -65,15 +131,56 @@ public class GameManager : MonoBehaviour
                 units[unit.id] = view;
             }
 
-            view.HealthBar.SetHP(unit.hp, unit.maxHp);
-
+            // Position first, cosmetics second: a unit that renders in the
+            // wrong place is far more broken than one missing a health bar,
+            // so nothing optional gets to run ahead of this.
+            //
             // Units live in the server's plain cell-space coordinates;
             // CellToWorld is what lines them up with the isometric tile
             // grid MapRenderer draws.
             targetPositions[unit.id] = IsoCoordConverter.CellToWorld(grid, unit.x, unit.y);
+
+            view.HealthBar.SetHP(unit.hp, unit.maxHp);
         }
 
         RemoveDeadUnits(seenIds);
+    }
+
+    // Buildings appear (placed), update (construction progress), and
+    // disappear (cancelled) the same way units do — the snapshot is the
+    // full authoritative list every tick, so anything missing from it is
+    // gone.
+    private void SyncBuildings(GameState state)
+    {
+        BuildingSnapshot[] snapshots = state.buildings ?? new BuildingSnapshot[0];
+        var seen = new HashSet<int>();
+
+        foreach (BuildingSnapshot snapshot in snapshots)
+        {
+            seen.Add(snapshot.id);
+
+            if (buildings.TryGetValue(snapshot.id, out BuildingView view))
+            {
+                view.Refresh(snapshot);
+                continue;
+            }
+
+            // Footprint size comes from the build menu; the pre-placed
+            // Construction Yard isn't in that menu (it can't be built), so
+            // fall back to its known 3x3 size.
+            BuildOption option = FindBuildOption(snapshot.type);
+            int width = option?.width ?? 3;
+            int height = option?.height ?? 3;
+
+            buildings[snapshot.id] = BuildingView.Create(grid, buildingSprite, barSprite, snapshot, width, height);
+        }
+
+        List<int> goneIds = buildings.Keys.Where(id => !seen.Contains(id)).ToList();
+        foreach (int id in goneIds)
+        {
+            Destroy(buildings[id].gameObject);
+            buildings.Remove(id);
+        }
     }
 
     // A unit that dropped out of state.units died and was already removed

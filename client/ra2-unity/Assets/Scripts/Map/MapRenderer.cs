@@ -13,6 +13,13 @@ public class MapRenderer : MonoBehaviour
 
     private Tilemap tilemap;
 
+    // Passability is kept around after rendering so the build preview can
+    // tint itself without another round trip to the server (which still
+    // makes the real call — see BuildPlacementHandler).
+    private bool[] passable;
+    private int width;
+    private int height;
+
     private void Awake()
     {
         tilemap = GetComponent<Tilemap>();
@@ -20,13 +27,27 @@ public class MapRenderer : MonoBehaviour
 
     public void Render(GameState state)
     {
-        for (int y = 0; y < state.mapHeight; y++)
+        width = state.mapWidth;
+        height = state.mapHeight;
+        passable = new bool[width * height];
+
+        for (int y = 0; y < height; y++)
         {
-            for (int x = 0; x < state.mapWidth; x++)
+            for (int x = 0; x < width; x++)
             {
-                TileData tile = state.tiles[y * state.mapWidth + x];
+                TileData tile = state.tiles[y * width + x];
                 tilemap.SetTile(new Vector3Int(x, y, 0), tileAssets[tile.type]);
+                passable[y * width + x] = tile.passable;
             }
         }
+    }
+
+    public bool IsPassable(int x, int y)
+    {
+        if (passable == null || x < 0 || x >= width || y < 0 || y >= height)
+        {
+            return false;
+        }
+        return passable[y * width + x];
     }
 }

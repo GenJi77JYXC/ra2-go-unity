@@ -493,3 +493,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HealthBar
   fill: {fileID: 2422826150886189302}
+  background: {fileID: 1945243525984377293}
+  barWidth: 0.8
+  barHeight: 0.12
+  heightAboveUnit: 0.5

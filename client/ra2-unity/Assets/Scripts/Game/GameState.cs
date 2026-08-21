@@ -14,7 +14,63 @@ public class GameState
     public int mapWidth;
     public int mapHeight;
     public TileData[] tiles;
+    public BuildOption[] buildMenu;
+
     public UnitSnapshot[] units;
+    public BuildingSnapshot[] buildings;
+    public int money;
+    public int power;
+
+    // The structure being built right now. RA2 builds first and places
+    // second, so this has no map position — it drives the build menu's
+    // progress readout and its "ready to place" state. Empty type means
+    // nothing is being built.
+    public string pendingType;
+    public float pendingProgress;
+    public bool pendingReady;
+
+    public QueueSnapshot[] queues;
+}
+
+// One production category's status. Categories are keyed by the building
+// type that produces them and shared by every factory of that type, so
+// two Barracks feed one queue rather than running in parallel.
+[Serializable]
+public class QueueSnapshot
+{
+    public string category;
+    public string item;
+    public float progress; // 0..1
+    public int length;
+}
+
+// One entry in the build menu, sent once on join.
+[Serializable]
+public class BuildOption
+{
+    public string type;
+    public int cost;
+    public int width;
+    public int height;
+    public int power;
+    public string[] produces;
+    public string[] prerequisites;
+}
+
+[Serializable]
+public class BuildingSnapshot
+{
+    public int id;
+    public string type;
+    public int owner;
+    public int cellX;
+    public int cellY;
+    public int hp;
+    public int maxHp;
+    public bool isBuilt;
+
+    // Marks the factory finished units of this category walk out of.
+    public bool isPrimary;
 }
 
 [Serializable]
@@ -45,4 +101,9 @@ public class ClientCommand
     public double targetX;    // move
     public double targetY;    // move
     public int targetUnitId;  // attack
+
+    public string itemType;   // build: building type; produce: unit type
+    public int cellX;         // build
+    public int cellY;         // build
+    public int buildingId;    // produce / cancel: which building
 }

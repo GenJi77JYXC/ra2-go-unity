@@ -13,7 +13,17 @@ public class SelectionHandler : MonoBehaviour
     private const float ClickDragThreshold = 5f; // pixels
     private const float ClickSelectRadius = 40f; // pixels
 
+    [SerializeField] private GameManager gameManager;
+    [SerializeField] private BuildPanel buildPanel;
+    [SerializeField] private BuildPlacementHandler placementHandler;
+    [SerializeField] private Grid grid;
+
     public HashSet<int> SelectedUnitIds { get; } = new();
+
+    // Buildings are selected one at a time (there's no drag-select for
+    // them) — 0 means none. BuildPanel reads this to decide whether to
+    // show a production panel.
+    public int SelectedBuildingId { get; private set; }
 
     private Vector2 dragStartScreen;
     private bool isDragging;
@@ -22,6 +32,14 @@ public class SelectionHandler : MonoBehaviour
     {
         if (Mouse.current == null)
         {
+            return;
+        }
+
+        // While placing a structure, or when the cursor is over a panel,
+        // clicks belong to the UI rather than to the map.
+        if (placementHandler.IsPlacing || buildPanel.MouseOverPanel)
+        {
+            isDragging = false;
             return;
         }
 
@@ -51,6 +69,24 @@ public class SelectionHandler : MonoBehaviour
     private void SelectNearest(Vector2 screenPos)
     {
         UnitView[] units = FindObjectsByType<UnitView>(FindObjectsInactive.Exclude);
+
+        // A click landing inside a building's footprint selects that
+        // building instead of a unit — checked in cell space, since an
+        // isometric footprint is a diamond that no BoxCollider2D matches.
+        Vector3 world = Camera.main.ScreenToWorldPoint(screenPos);
+        Vector2 cell = IsoCoordConverter.WorldToCell(grid, world);
+        BuildingView building = gameManager.BuildingAtCell(
+            Mathf.FloorToInt(cell.x), Mathf.FloorToInt(cell.y));
+
+        if (building != null)
+        {
+            SelectedBuildingId = building.BuildingId;
+            SelectedUnitIds.Clear();
+            ApplySelectionVisuals(units);
+            return;
+        }
+
+        SelectedBuildingId = 0;
 
         UnitView nearest = null;
         float nearestDist = float.MaxValue;
@@ -87,6 +123,7 @@ public class SelectionHandler : MonoBehaviour
 
         UnitView[] units = FindObjectsByType<UnitView>(FindObjectsInactive.Exclude);
 
+        SelectedBuildingId = 0; // a drag-select is always about units
         SelectedUnitIds.Clear();
         foreach (UnitView unit in units)
         {
@@ -111,6 +148,14 @@ public class SelectionHandler : MonoBehaviour
             bool selected = SelectedUnitIds.Contains(unit.UnitId);
             unit.SelectionCircle.SetVisible(selected);
             unit.HealthBar.SetSelected(selected);
+        }
+
+        // Buildings have no selection ring (the production panel is the
+        // feedback), but their bar follows the same damaged-or-selected
+        // rule units use.
+        foreach (BuildingView building in gameManager.Buildings)
+        {
+            building.HealthBar.SetSelected(building.BuildingId == SelectedBuildingId);
         }
     }
 
