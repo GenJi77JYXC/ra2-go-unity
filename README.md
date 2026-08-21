@@ -29,6 +29,10 @@ RA2 风格 RTS 学习项目 —— Go 服务端 + Unity 客户端。
 - [x] Phase 4: 多单位 + 框选 + 战斗
 - [ ] Phase 5: 建造系统
 
+## 已知问题(暂缓处理)
+
+- **单位寻路时互相没有碰撞/避让**:多个单位一起收到移动指令时,最终目的地会被分散到不同格子(见 `nearbyPassableCells`),但**移动过程中**互相之间没有任何感知,路径重叠时会直接穿模。真正的局部避让(steering / reciprocal velocity obstacles 之类)工程量不小,且不在学习计划 Phase 4 的里程碑范围内,先记录下来,后续视情况单独处理。代码里的标记见 [server/game/world.go](server/game/world.go) `Unit.update` 方法上的 `TODO(known gap, deferred)` 注释。
+
 ## 快速开始(Phase 1)
 
 ```bash
