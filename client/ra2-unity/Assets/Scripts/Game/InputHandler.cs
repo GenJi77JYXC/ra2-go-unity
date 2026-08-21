@@ -6,6 +6,7 @@ using UnityEngine.InputSystem;
 public class InputHandler : MonoBehaviour
 {
     [SerializeField] private WebSocketClient webSocketClient;
+    [SerializeField] private Grid grid;
 
     // Hardcoded until Phase 4 adds real unit selection.
     private const int ControlledUnitId = 1;
@@ -22,12 +23,17 @@ public class InputHandler : MonoBehaviour
         Vector3 screenPos = Mouse.current.position.ReadValue();
         Vector3 worldPoint = Camera.main.ScreenToWorldPoint(screenPos);
 
+        // worldPoint is in isometric-projected screen space (where the
+        // tilemap is actually drawn); the server thinks in plain cell
+        // coordinates, so invert the projection before sending.
+        Vector2 cell = IsoCoordConverter.WorldToCell(grid, worldPoint);
+
         webSocketClient.Send(new ClientCommand
         {
             type = "move",
             unitIds = new[] { ControlledUnitId },
-            targetX = worldPoint.x,
-            targetY = worldPoint.y,
+            targetX = cell.x,
+            targetY = cell.y,
         });
     }
 }

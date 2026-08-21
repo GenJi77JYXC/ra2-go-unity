@@ -25,7 +25,8 @@ RA2 风格 RTS 学习项目 —— Go 服务端 + Unity 客户端。
 - [x] 目录骨架
 - [x] Phase 1: Hello Tank(协议打通 + 渲染)
 - [x] Phase 2: 单坦克移动(命令回路)
-- [ ] Phase 3: 等距地图渲染 + A* 寻路
+- [x] Phase 3: 等距地图渲染 + A* 寻路
+- [ ] Phase 4: 多单位 + 框选 + 战斗
 
 ## 快速开始(Phase 1)
 
