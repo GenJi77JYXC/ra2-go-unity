@@ -24,16 +24,24 @@ public class HealthBar : MonoBehaviour
     // Builds a bar from scratch under parent, for callers that aren't
     // working from a prefab. Assigning the serialized fields directly is
     // fine from inside the class, and keeps the prefab path unchanged.
+    //
+    // The object starts inactive on purpose: AddComponent runs Awake
+    // immediately, which would hit ApplyVisual before the renderers below
+    // are assigned. Awake instead waits until the object is activated,
+    // by which point everything is wired — so Awake can keep assuming its
+    // references are there, the way the prefab path already guarantees.
     public static HealthBar CreateFor(Transform parent, Sprite barSprite, float heightAbove)
     {
         var obj = new GameObject("HealthBar");
+        obj.SetActive(false);
         obj.transform.SetParent(parent, false);
 
         var bar = obj.AddComponent<HealthBar>();
         bar.heightAboveUnit = heightAbove;
         bar.background = CreateQuad(obj.transform, barSprite, "Background", Color.black, 10);
         bar.fill = CreateQuad(obj.transform, barSprite, "Fill", Color.green, 11);
-        bar.ApplyVisual();
+
+        obj.SetActive(true); // runs Awake -> ApplyVisual, now safely
         return bar;
     }
 
