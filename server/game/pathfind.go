@@ -68,6 +68,58 @@ func absInt(v int) int {
 	return v
 }
 
+// nearbyPassableCells finds count distinct passable cells at or near
+// center, searching outward ring by ring (Chebyshev distance 1, 2, 3, ...)
+// until enough are found. Used to spread a group move order across several
+// nearby cells instead of sending every selected unit to the exact same
+// point, where they'd otherwise end up stacked on each other. Callers are
+// expected to have already checked center itself is passable — this
+// doesn't special-case an impassable center, it just includes it first if
+// PassableAt says so.
+func nearbyPassableCells(m *GameMap, center cell, count int) []cell {
+	result := make([]cell, 0, count)
+
+	if m.PassableAt(center.X, center.Y) {
+		result = append(result, center)
+	}
+
+	for radius := 1; len(result) < count && radius <= m.Width+m.Height; radius++ {
+		for _, c := range ringCells(center, radius) {
+			if len(result) >= count {
+				break
+			}
+			if m.PassableAt(c.X, c.Y) {
+				result = append(result, c)
+			}
+		}
+	}
+
+	// Ran out of passable cells nearby (a tiny isolated pocket, or a huge
+	// group order) — pad with center so callers always get exactly count
+	// entries; FindPath will just report those as unreachable.
+	for len(result) < count {
+		result = append(result, center)
+	}
+
+	return result
+}
+
+// ringCells returns every cell exactly `radius` away from center by
+// Chebyshev distance (the edge of a (2*radius+1)-square), i.e. one step
+// further out than the previous radius's ring.
+func ringCells(center cell, radius int) []cell {
+	cells := make([]cell, 0, radius*8)
+	for dx := -radius; dx <= radius; dx++ {
+		for dy := -radius; dy <= radius; dy++ {
+			if absInt(dx) != radius && absInt(dy) != radius {
+				continue
+			}
+			cells = append(cells, cell{X: center.X + dx, Y: center.Y + dy})
+		}
+	}
+	return cells
+}
+
 func reconstructPath(cameFrom map[cell]cell, start, goal cell) []cell {
 	path := []cell{goal}
 	for path[0] != start {

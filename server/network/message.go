@@ -27,15 +27,19 @@ type TileData struct {
 }
 
 type UnitSnapshot struct {
-	ID int     `json:"id"`
-	X  float64 `json:"x"`
-	Y  float64 `json:"y"`
+	ID    int     `json:"id"`
+	X     float64 `json:"x"`
+	Y     float64 `json:"y"`
+	Owner int     `json:"owner"` // Phase 4: which player controls this unit
+	HP    int     `json:"hp"`
+	MaxHP int     `json:"maxHp"`
 }
 
 // ClientCommand is sent client -> server.
 type ClientCommand struct {
-	Type    string  `json:"type"` // "move" (Phase 2), "attack" (Phase 4), "build" (Phase 5), ...
-	UnitIDs []int   `json:"unitIds"`
-	TargetX float64 `json:"targetX"`
-	TargetY float64 `json:"targetY"`
+	Type         string  `json:"type"` // "move" (Phase 2), "attack" (Phase 4), "build" (Phase 5), ...
+	UnitIDs      []int   `json:"unitIds"`
+	TargetX      float64 `json:"targetX"`      // move
+	TargetY      float64 `json:"targetY"`      // move
+	TargetUnitID int     `json:"targetUnitId"` // attack
 }

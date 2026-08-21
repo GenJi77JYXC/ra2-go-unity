@@ -117,8 +117,8 @@ func (s *Server) readCommands(conn *websocket.Conn) {
 			continue
 		}
 
-		if cmd.Type != "move" {
-			continue // "attack" (Phase 4) / "build" (Phase 5) aren't handled yet
+		if cmd.Type != "move" && cmd.Type != "attack" {
+			continue // "build" (Phase 5) isn't handled yet
 		}
 
 		select {
@@ -201,16 +201,18 @@ func initialGameState(world *game.World) GameState {
 func toUnitSnapshots(units []*game.Unit) []UnitSnapshot {
 	out := make([]UnitSnapshot, len(units))
 	for i, u := range units {
-		out[i] = UnitSnapshot{ID: u.ID, X: u.X, Y: u.Y}
+		out[i] = UnitSnapshot{ID: u.ID, X: u.X, Y: u.Y, Owner: u.Owner, HP: u.HP, MaxHP: u.MaxHP}
 	}
 	return out
 }
 
 func toGameCommand(cmd ClientCommand) game.Command {
 	return game.Command{
-		UnitIDs: cmd.UnitIDs,
-		TargetX: cmd.TargetX,
-		TargetY: cmd.TargetY,
-		Owner:   defaultOwner,
+		Type:         cmd.Type,
+		UnitIDs:      cmd.UnitIDs,
+		TargetX:      cmd.TargetX,
+		TargetY:      cmd.TargetY,
+		TargetUnitID: cmd.TargetUnitID,
+		Owner:        defaultOwner,
 	}
 }
