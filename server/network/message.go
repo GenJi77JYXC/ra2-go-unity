@@ -10,12 +10,64 @@ package network
 // messages sent every second, since a 20x20 map's tile data would otherwise
 // dwarf the actual per-tick unit updates.
 type GameState struct {
-	Tick      int64          `json:"tick"`
-	IsInitial bool           `json:"isInitial"`
-	MapWidth  int            `json:"mapWidth,omitempty"`
-	MapHeight int            `json:"mapHeight,omitempty"`
-	Tiles     []TileData     `json:"tiles,omitempty"`
-	Units     []UnitSnapshot `json:"units"`
+	Tick      int64              `json:"tick"`
+	IsInitial bool               `json:"isInitial"`
+	MapWidth  int                `json:"mapWidth,omitempty"`
+	MapHeight int                `json:"mapHeight,omitempty"`
+	Tiles     []TileData         `json:"tiles,omitempty"`
+	BuildMenu []BuildOption      `json:"buildMenu,omitempty"` // initial-only, like Tiles
+	Units     []UnitSnapshot     `json:"units"`
+	Buildings []BuildingSnapshot `json:"buildings"`
+	Money     int                `json:"money"`
+	Power     int                `json:"power"`
+
+	// The structure the viewing player is currently building. RA2 builds
+	// first and places second, so this has no map position — it's what
+	// drives the build menu's progress readout and its "ready to place"
+	// state. PendingType is "" when nothing is being built.
+	PendingType     string  `json:"pendingType"`
+	PendingProgress float64 `json:"pendingProgress"`
+	PendingReady    bool    `json:"pendingReady"`
+
+	Queues []QueueSnapshot `json:"queues"`
+}
+
+// QueueSnapshot is one production category's status. Categories are keyed
+// by the building type that produces them and are shared by every factory
+// of that type (see game.Player.Queues), so this is per-player state, not
+// per-building.
+type QueueSnapshot struct {
+	Category string  `json:"category"`
+	Item     string  `json:"item"`
+	Progress float64 `json:"progress"` // 0..1
+	Length   int     `json:"length"`
+}
+
+// BuildOption is one entry in the client's build menu, sent once on join.
+type BuildOption struct {
+	Type          string   `json:"type"`
+	Cost          int      `json:"cost"`
+	Width         int      `json:"width"`
+	Height        int      `json:"height"`
+	Power         int      `json:"power"`
+	Produces      []string `json:"produces"`
+	Prerequisites []string `json:"prerequisites"`
+}
+
+type BuildingSnapshot struct {
+	ID      int    `json:"id"`
+	Type    string `json:"type"`
+	Owner   int    `json:"owner"`
+	CellX   int    `json:"cellX"`
+	CellY   int    `json:"cellY"`
+	HP      int    `json:"hp"`
+	MaxHP   int    `json:"maxHp"`
+	IsBuilt bool   `json:"isBuilt"`
+
+	// IsPrimary marks the factory that finished units of this category
+	// walk out of — all factories of a type share one queue, so exactly
+	// one has to be the exit.
+	IsPrimary bool `json:"isPrimary"`
 }
 
 // TileData mirrors game.Tile. Type is game.TerrainType as a raw int
@@ -37,9 +89,14 @@ type UnitSnapshot struct {
 
 // ClientCommand is sent client -> server.
 type ClientCommand struct {
-	Type         string  `json:"type"` // "move" (Phase 2), "attack" (Phase 4), "build" (Phase 5), ...
+	Type         string  `json:"type"` // "move", "attack", "build", "produce" or "cancel"
 	UnitIDs      []int   `json:"unitIds"`
 	TargetX      float64 `json:"targetX"`      // move
 	TargetY      float64 `json:"targetY"`      // move
 	TargetUnitID int     `json:"targetUnitId"` // attack
+
+	ItemType   string `json:"itemType"`   // build: building type; produce: unit type
+	CellX      int    `json:"cellX"`      // build
+	CellY      int    `json:"cellY"`      // build
+	BuildingID int    `json:"buildingId"` // produce: which factory
 }

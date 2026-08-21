@@ -117,8 +117,10 @@ func (s *Server) readCommands(conn *websocket.Conn) {
 			continue
 		}
 
-		if cmd.Type != "move" && cmd.Type != "attack" {
-			continue // "build" (Phase 5) isn't handled yet
+		switch cmd.Type {
+		case "move", "attack", "build", "place", "produce", "cancel", "setPrimary":
+		default:
+			continue // unknown command type
 		}
 
 		select {
@@ -173,7 +175,17 @@ func (s *Server) Broadcast(snapshot game.Snapshot) {
 }
 
 func toGameState(snapshot game.Snapshot) GameState {
-	return GameState{Tick: snapshot.Tick, Units: toUnitSnapshots(snapshot.Units)}
+	return GameState{
+		Tick:            snapshot.Tick,
+		Units:           toUnitSnapshots(snapshot.Units),
+		Buildings:       toBuildingSnapshots(snapshot.Buildings),
+		Money:           snapshot.Money,
+		Power:           snapshot.Power,
+		PendingType:     snapshot.PendingType,
+		PendingProgress: snapshot.PendingProgress,
+		PendingReady:    snapshot.PendingReady,
+		Queues:          toQueueSnapshots(snapshot.Queues),
+	}
 }
 
 // initialGameState is the one-off full-state message a new connection gets
@@ -188,14 +200,73 @@ func initialGameState(world *game.World) GameState {
 		}
 	}
 
+	snapshot := world.Snapshot()
+
 	return GameState{
 		Tick:      world.TickCount,
 		IsInitial: true,
 		MapWidth:  m.Width,
 		MapHeight: m.Height,
 		Tiles:     tiles,
+		BuildMenu: toBuildMenu(),
 		Units:     toUnitSnapshots(world.Units),
+		Buildings: toBuildingSnapshots(world.Buildings),
+
+		Money:           snapshot.Money,
+		Power:           snapshot.Power,
+		PendingType:     snapshot.PendingType,
+		PendingProgress: snapshot.PendingProgress,
+		PendingReady:    snapshot.PendingReady,
+		Queues:          toQueueSnapshots(snapshot.Queues),
 	}
+}
+
+func toBuildMenu() []BuildOption {
+	catalog := game.BuildingCatalog()
+	out := make([]BuildOption, len(catalog))
+	for i, c := range catalog {
+		out[i] = BuildOption{
+			Type:          c.Type,
+			Cost:          c.Cost,
+			Width:         c.Width,
+			Height:        c.Height,
+			Power:         c.Power,
+			Produces:      c.Produces,
+			Prerequisites: c.Prerequisites,
+		}
+	}
+	return out
+}
+
+func toQueueSnapshots(queues []game.QueueState) []QueueSnapshot {
+	out := make([]QueueSnapshot, len(queues))
+	for i, q := range queues {
+		out[i] = QueueSnapshot{
+			Category: q.Category,
+			Item:     q.Item,
+			Progress: q.Progress,
+			Length:   q.Length,
+		}
+	}
+	return out
+}
+
+func toBuildingSnapshots(buildings []*game.Building) []BuildingSnapshot {
+	out := make([]BuildingSnapshot, len(buildings))
+	for i, b := range buildings {
+		out[i] = BuildingSnapshot{
+			ID:        b.ID,
+			Type:      b.Type,
+			Owner:     b.Owner,
+			CellX:     b.CellX,
+			CellY:     b.CellY,
+			HP:        b.HP,
+			MaxHP:     b.MaxHP,
+			IsBuilt:   b.IsBuilt,
+			IsPrimary: b.IsPrimary,
+		}
+	}
+	return out
 }
 
 func toUnitSnapshots(units []*game.Unit) []UnitSnapshot {
@@ -213,6 +284,10 @@ func toGameCommand(cmd ClientCommand) game.Command {
 		TargetX:      cmd.TargetX,
 		TargetY:      cmd.TargetY,
 		TargetUnitID: cmd.TargetUnitID,
+		ItemType:     cmd.ItemType,
+		CellX:        cmd.CellX,
+		CellY:        cmd.CellY,
+		BuildingID:   cmd.BuildingID,
 		Owner:        defaultOwner,
 	}
 }
