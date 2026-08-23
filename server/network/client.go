@@ -35,7 +35,11 @@ func newClient(id int, conn *websocket.Conn) *Client {
 	return &Client{
 		ID:   id,
 		conn: conn,
-		out:  make(chan []byte, 8),
+		// 8 slots was only 0.4s of runway at 20 snapshots a second, which
+		// a scene load or a GC pause blows through easily. Dropping is
+		// harmless (the next snapshot supersedes it), but a wider buffer
+		// means a brief stall costs nothing at all.
+		out: make(chan []byte, 64),
 	}
 }
 
@@ -58,9 +62,21 @@ func (c *Client) Send(data []byte) {
 	}
 }
 
+// writeTimeout only exists to reap a connection that has genuinely gone
+// away — a peer that stopped acknowledging entirely. It is deliberately
+// generous, because the library closes the connection on any error
+// including a context expiry, so a timeout here is fatal to the match.
+//
+// Protecting the tick loop from a merely slow client is Send's job, not
+// this one's: Send drops snapshots when the buffer fills and never blocks.
+// Conflating the two cost a real bug — a client stalled for a few seconds
+// loading a scene backed up enough writes to blow a 5s timeout, and got
+// disconnected mid-match for being briefly busy.
+const writeTimeout = 30 * time.Second
+
 func (c *Client) writePump() {
 	for data := range c.out {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
 		err := c.conn.Write(ctx, websocket.MessageText, data)
 		cancel()
 		if err != nil {
