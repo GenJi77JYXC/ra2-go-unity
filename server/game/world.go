@@ -36,6 +36,29 @@ type Unit struct {
 	// none. FireCooldown counts down to the next shot once in range.
 	AttackTargetID int     `json:"-"`
 	FireCooldown   float64 `json:"-"`
+
+	// Cell is the cell the unit occupies. While InTransit it is walking
+	// from Cell to NextCell and holds *both* in the occupancy table — see
+	// World.arrive. X/Y stay the authoritative position for rendering and
+	// weapon range; these are the collision view of the same thing.
+	Cell      cell `json:"-"`
+	NextCell  cell `json:"-"`
+	InTransit bool `json:"-"`
+
+	// Goal is where the unit was ultimately told to go. Keeping it means
+	// anything that interrupts the trip — stepping aside for someone, a
+	// re-route that only got partway — resumes on its own instead of
+	// silently dropping the order (see World.finishPath).
+	Goal    cell `json:"-"`
+	HasGoal bool `json:"-"`
+
+	// BlockedTime is how long the next cell has been occupied;
+	// RetryCooldown throttles re-pathing while that lasts. HoldTime keeps
+	// a unit that just stepped aside parked long enough for whoever it
+	// made room for to actually get past. All three live in occupancy.go.
+	BlockedTime   float64 `json:"-"`
+	RetryCooldown float64 `json:"-"`
+	HoldTime      float64 `json:"-"`
 }
 
 func newUnit(id int, x, y float64, owner int, template string) *Unit {
@@ -44,6 +67,7 @@ func newUnit(id int, x, y float64, owner int, template string) *Unit {
 		ID:       id,
 		X:        x,
 		Y:        y,
+		Cell:     worldToCell(x, y),
 		Owner:    owner,
 		Template: template,
 		Armor:    t.Armor,
@@ -52,32 +76,55 @@ func newUnit(id int, x, y float64, owner int, template string) *Unit {
 	}
 }
 
-// update advances the unit along Path by unitSpeed*dt world units, carrying
-// over any leftover movement budget into the next waypoint within the same
-// tick instead of losing it at every waypoint transition.
+// updateUnit advances a unit along Path by unitSpeed*dt world units,
+// carrying leftover movement budget between waypoints within the same tick
+// instead of losing it at every transition.
 //
-// TODO(known gap, deferred): units have no awareness of each other here —
-// nothing stops two units' paths from overlapping mid-transit, so they can
-// visually pass through one another while moving (their *destination*
-// cells are kept distinct by handleMoveCommand's nearbyPassableCells, but
-// nothing separates them along the way). Real local avoidance (steering
-// behaviors, reciprocal velocity obstacles, etc.) is a substantial feature
-// in its own right and out of scope for Phase 4's stated milestone —
-// deliberately deferred rather than overlooked. If picked up later, this
-// is the function that needs to become aware of nearby units' positions.
-func (u *Unit) update(dt float64) {
+// Movement is a series of cell-to-cell hops rather than free motion: to
+// leave its current cell a unit must first *reserve* the next one, which
+// is what stops two units walking through each other. A reservation that
+// fails hands off to blocked() in occupancy.go.
+func (w *World) updateUnit(u *Unit, dt float64) {
 	step := unitSpeed * dt
 
-	for step > 0 && len(u.Path) > 0 {
-		target := u.Path[0]
+	for step > 0 {
+		if !u.InTransit {
+			if len(u.Path) == 0 {
+				w.finishPath(u, dt)
+				if len(u.Path) == 0 {
+					return
+				}
+			}
+
+			next := worldToCell(u.Path[0].X, u.Path[0].Y)
+			if next == u.Cell {
+				u.Path = u.Path[1:] // already standing there
+				continue
+			}
+			if !w.reserve(u, next) {
+				w.blocked(u, next, dt)
+				return
+			}
+
+			u.NextCell = next
+			u.InTransit = true
+			u.BlockedTime = 0
+			u.RetryCooldown = 0
+			// Popped here rather than on arrival: while InTransit the
+			// destination is NextCell, so a fresh order can replace Path
+			// mid-hop without the unit losing its first new waypoint.
+			u.Path = u.Path[1:]
+		}
+
+		target := cellCenterWorld(u.NextCell)
 		dx := target.X - u.X
 		dy := target.Y - u.Y
 		dist := math.Hypot(dx, dy)
 
 		if step >= dist || dist <= arriveDistance {
 			u.X, u.Y = target.X, target.Y
-			u.Path = u.Path[1:]
 			step -= dist
+			w.arrive(u)
 			continue
 		}
 
@@ -85,6 +132,52 @@ func (u *Unit) update(dt float64) {
 		u.Y += dy / dist * step
 		step = 0
 	}
+}
+
+// finishPath decides what happens when a unit runs out of waypoints:
+// either it's where it was headed, or something diverted it and it should
+// pick the trip back up.
+func (w *World) finishPath(u *Unit, dt float64) {
+	if u.HoldTime > 0 {
+		u.HoldTime -= dt
+		return // just stepped aside; let the other unit through first
+	}
+	if !u.HasGoal {
+		return
+	}
+	if u.Cell == u.Goal {
+		u.HasGoal = false
+		return
+	}
+	if !w.pathTo(u, u.Goal, w.staticEnterable()) {
+		u.HasGoal = false // no route left — drop it rather than spin
+	}
+}
+
+// pathTo runs A* toward goal and installs the result as the unit's Path.
+// Reports false when there's no route, or the unit is already there.
+func (w *World) pathTo(u *Unit, goal cell, enterable canEnter) bool {
+	path := w.Map.FindPath(u.pathStart(), goal, enterable)
+	if len(path) <= 1 {
+		return false
+	}
+
+	// path[0] is where the unit already is (or is already committed to
+	// reaching), so skip it — otherwise it would first snap back to the
+	// center of the cell it's standing in.
+	u.Path = toWaypoints(path[1:])
+	return true
+}
+
+// pathStart is the cell a new path has to start from. A unit halfway into
+// its next cell is committed to finishing that hop — it still holds the
+// reservation — so re-routing from the cell behind it would make it walk
+// backwards.
+func (u *Unit) pathStart() cell {
+	if u.InTransit {
+		return u.NextCell
+	}
+	return u.Cell
 }
 
 // World holds all authoritative game state. The tick loop in main.go is the
@@ -105,9 +198,26 @@ type World struct {
 	// created the room (see victory.go).
 	Victory string
 
+	// occupied maps a cell to the ID of the unit holding it. This is the
+	// dynamic obstacle layer — buildings are found by scanning Buildings,
+	// terrain lives on Map. See occupancy.go.
+	occupied map[cell]int
+
 	// nextID is a single ID space shared by units and buildings, so a
 	// command naming an ID can never be ambiguous about which it meant.
 	nextID int
+}
+
+// addUnit creates a unit, gives it the next ID and registers the cell it
+// stands on. Every unit has to go through here (or placeUnit) — one that
+// never lands in the occupancy table is invisible to everyone else's
+// collision checks.
+func (w *World) addUnit(x, y float64, owner int, template string) *Unit {
+	w.nextID++
+	u := newUnit(w.nextID, x, y, owner, template)
+	w.Units = append(w.Units, u)
+	w.placeUnit(u)
+	return u
 }
 
 // NewWorld builds a starting world: 3 player-owned tanks and 2 enemy tanks
@@ -122,9 +232,10 @@ func NewWorld(victory string) *World {
 	}
 
 	w := &World{
-		Map:     NewTestMap(),
-		Players: map[int]*Player{1: newPlayer(1), 2: newPlayer(2)},
-		Victory: victory,
+		Map:      NewTestMap(),
+		Players:  map[int]*Player{1: newPlayer(1), 2: newPlayer(2)},
+		Victory:  victory,
+		occupied: map[cell]int{},
 	}
 
 	for _, u := range []struct {
@@ -134,8 +245,7 @@ func NewWorld(victory string) *World {
 		{0.5, 0.5, 1}, {1.5, 0.5, 1}, {2.5, 0.5, 1},
 		{15.5, 15.5, 2}, {17.5, 15.5, 2},
 	} {
-		w.nextID++
-		w.Units = append(w.Units, newUnit(w.nextID, u.x, u.y, u.owner, "Tank"))
+		w.addUnit(u.x, u.y, u.owner, "Tank")
 	}
 
 	for _, b := range []struct {
@@ -162,7 +272,7 @@ func (w *World) Tick(dt float64) {
 	}
 
 	for _, u := range w.Units {
-		u.update(dt)
+		w.updateUnit(u, dt)
 	}
 
 	w.updateCombat(dt)
@@ -351,14 +461,13 @@ func (w *World) findBuilding(id int) *Building {
 
 // handleMoveCommand routes a move order through A* and applies the
 // resulting path to every unit it names that the command's owner actually
-// controls. If the clicked cell is impassable (e.g. the middle of a lake),
-// nobody moves — same as a single unit would do. Otherwise, when more than
-// one unit is named, they're spread across distinct passable cells near
-// the target instead of all pathing to the exact same point, where they'd
-// end up stacked on top of each other.
+// controls. If the clicked cell can't be stood on — the middle of a lake,
+// or a building's footprint — nobody moves, same as a single unit would
+// do. When more than one unit is named they're spread across distinct free
+// cells near the target instead of all pathing to the exact same point.
 func (w *World) handleMoveCommand(cmd Command) {
 	goal := worldToCell(cmd.TargetX, cmd.TargetY)
-	if !w.Map.PassableAt(goal.X, goal.Y) {
+	if !w.staticEnterable()(goal.X, goal.Y) {
 		return
 	}
 
@@ -372,21 +481,28 @@ func (w *World) handleMoveCommand(cmd Command) {
 		return
 	}
 
-	targets := nearbyPassableCells(w.Map, goal, len(movers))
+	// Destinations avoid units as well as terrain, so a group doesn't get
+	// sent onto cells someone is already parked on — but the group's own
+	// members don't count, or ordering them to close ranks where they
+	// already stand would find nowhere to put them.
+	targets := nearbyCells(w.Map, goal, len(movers), w.freeFor(movers...))
 
 	for i, u := range movers {
 		u.AttackTargetID = 0 // a fresh move order cancels any attack order
 
-		start := worldToCell(u.X, u.Y)
-		path := w.Map.FindPath(start, targets[i])
-		if len(path) <= 1 {
-			continue // already there or unreachable
-		}
+		// Goal is set even if the path fails: the unit re-tries from
+		// finishPath, and a destination that's crowded right now may well
+		// have opened up by the time it gets close.
+		u.Goal = targets[i]
+		u.HasGoal = true
+		u.BlockedTime = 0
+		u.RetryCooldown = 0
 
-		// path[0] is the unit's current cell; skip it so the unit heads
-		// straight for the next waypoint instead of first snapping to the
-		// center of the cell it's already standing in.
-		u.Path = toWaypoints(path[1:])
+		// Routed against terrain and buildings only — other units are
+		// dealt with on contact rather than designed around up front.
+		if !w.pathTo(u, targets[i], w.staticEnterable()) {
+			u.Path = nil
+		}
 	}
 }
 
@@ -410,7 +526,7 @@ func (w *World) handleAttackCommand(cmd Command) {
 		}
 
 		u.AttackTargetID = targetID
-		u.Path = nil // let updateCombat's chase() path toward the target fresh
+		u.stop() // let updateCombat's chase() path toward the target fresh
 	}
 }
 

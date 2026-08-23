@@ -319,18 +319,22 @@ func (w *World) ensurePrimary(owner int, buildingType string) {
 
 // spawnUnit places a freshly produced unit on a free cell near its
 // factory, reusing the same outward ring search that spreads out group
-// move orders.
+// move orders. "Free" here includes other units: stacking a new tank on
+// top of one that hasn't driven off yet would put two units in one cell,
+// which the whole occupancy scheme assumes can't happen.
 func (w *World) spawnUnit(unitType string, from *Building) {
 	t := buildingTemplates[from.Type]
 	exit := cell{X: from.CellX + t.Width, Y: from.CellY}
 
-	for _, c := range nearbyPassableCells(w.Map, exit, 8) {
-		if w.buildingAt(c.X, c.Y) != nil {
+	free := w.freeFor()
+	// nearbyCells pads its result with center when it runs out of real
+	// candidates, so the predicate has to be re-checked here.
+	for _, c := range nearbyCells(w.Map, exit, 8, free) {
+		if !free(c.X, c.Y) {
 			continue
 		}
 		pos := cellCenterWorld(c)
-		w.nextID++
-		w.Units = append(w.Units, newUnit(w.nextID, pos.X, pos.Y, from.Owner, unitType))
+		w.addUnit(pos.X, pos.Y, from.Owner, unitType)
 		return
 	}
 }

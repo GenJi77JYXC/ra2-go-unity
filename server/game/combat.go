@@ -69,11 +69,11 @@ func (w *World) updateCombat(dt float64) {
 		dist := math.Hypot(tx-u.X, ty-u.Y)
 
 		if dist > weapon.Range {
-			u.chase(w.Map, tx, ty)
+			w.chase(u, tx, ty)
 			continue
 		}
 
-		u.Path = nil // in range: stop advancing
+		u.stop() // in range: stop advancing, and don't resume afterwards
 
 		if u.FireCooldown > 0 {
 			u.FireCooldown -= dt
@@ -89,28 +89,34 @@ func (w *World) updateCombat(dt float64) {
 	}
 }
 
-// chase paths the unit toward the target's current cell. It's a one-shot
-// re-path, not continuous tracking: if Path is already set, it's left
-// alone rather than recomputed every tick. That's fine as long as targets
-// don't move mid-chase (true for stationary enemies and buildings) — a
-// real pursuit AI that re-paths as a moving target relocates is a later
-// problem.
+// chase paths the unit toward the target. It's a one-shot re-path, not
+// continuous tracking: if Path is already set, it's left alone rather than
+// recomputed every tick. That's fine as long as targets don't move
+// mid-chase (true for stationary enemies and buildings) — a real pursuit
+// AI that re-paths as a moving target relocates is a later problem.
 //
-// A building's own cells are impassable to pathfinding, so the route stops
-// at the edge of its footprint; weapon range covers the rest.
-func (u *Unit) chase(m *GameMap, targetX, targetY float64) {
+// The target's own cell is never a valid destination: a building's
+// footprint is impassable, and an enemy unit is holding the cell it stands
+// on. So the route aims for the nearest cell that *is* free and lets
+// weapon range cover the rest — updateCombat stops the unit as soon as it
+// gets close enough, usually well before it arrives.
+//
+// Chasing deliberately doesn't set Goal. If the unit gets diverted (told
+// to step aside for someone), its Path empties and this simply re-issues
+// on the next tick against wherever the target is by then, which is more
+// current than a Goal recorded when the order was given.
+func (w *World) chase(u *Unit, targetX, targetY float64) {
 	if len(u.Path) > 0 {
 		return
 	}
 
-	start := worldToCell(u.X, u.Y)
-	goal := worldToCell(targetX, targetY)
-
-	path := m.FindPath(start, goal)
-	if len(path) <= 1 {
-		return
+	free := w.freeFor(u)
+	goal := nearbyCells(w.Map, worldToCell(targetX, targetY), 1, free)[0]
+	if !free(goal.X, goal.Y) {
+		return // nowhere to stand anywhere near it
 	}
-	u.Path = toWaypoints(path[1:])
+
+	w.pathTo(u, goal, w.staticEnterable())
 }
 
 func (w *World) findUnit(id int) *Unit {
@@ -132,6 +138,7 @@ func (w *World) removeDestroyed() {
 		if u.HP <= 0 {
 			log.Printf("unit %d destroyed", u.ID)
 			w.clearAttackersOf(u.ID)
+			w.clearUnit(u) // a wreck holding a reservation would wall the map off
 		}
 	}
 	for _, b := range w.Buildings {

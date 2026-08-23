@@ -8,8 +8,15 @@ import "container/heap"
 // Manhattan is still admissible and expands fewer nodes — it's the tighter
 // heuristic here. Returns the cell path including both start and goal, or
 // nil if the goal is unreachable or impassable.
-func (m *GameMap) FindPath(start, goal cell) []cell {
-	if !m.PassableAt(goal.X, goal.Y) {
+//
+// enterable decides what counts as an obstacle (see canEnter in
+// occupancy.go). GameMap itself only knows about terrain — buildings and
+// units live on World — so the caller composes the two together. Note that
+// start is never tested: a unit can end up standing somewhere it could
+// never have walked into (a building placed on top of it), and it still
+// has to be able to walk out.
+func (m *GameMap) FindPath(start, goal cell, enterable canEnter) []cell {
+	if !enterable(goal.X, goal.Y) {
 		return nil
 	}
 	if start == goal {
@@ -32,7 +39,7 @@ func (m *GameMap) FindPath(start, goal cell) []cell {
 		closed[current] = true
 
 		for _, next := range neighbors4(current) {
-			if !m.PassableAt(next.X, next.Y) || closed[next] {
+			if !enterable(next.X, next.Y) || closed[next] {
 				continue
 			}
 
@@ -68,18 +75,20 @@ func absInt(v int) int {
 	return v
 }
 
-// nearbyPassableCells finds count distinct passable cells at or near
-// center, searching outward ring by ring (Chebyshev distance 1, 2, 3, ...)
-// until enough are found. Used to spread a group move order across several
+// nearbyCells finds count distinct enterable cells at or near center,
+// searching outward ring by ring (Chebyshev distance 1, 2, 3, ...) until
+// enough are found. Used to spread a group move order across several
 // nearby cells instead of sending every selected unit to the exact same
-// point, where they'd otherwise end up stacked on each other. Callers are
-// expected to have already checked center itself is passable — this
-// doesn't special-case an impassable center, it just includes it first if
-// PassableAt says so.
-func nearbyPassableCells(m *GameMap, center cell, count int) []cell {
+// point, where they'd otherwise end up stacked on each other — and to find
+// somewhere to put a freshly produced unit next to its factory.
+//
+// enterable is the same predicate FindPath takes, so callers decide
+// whether "free" means just terrain or also excludes buildings and other
+// units (see canEnter in occupancy.go).
+func nearbyCells(m *GameMap, center cell, count int, enterable canEnter) []cell {
 	result := make([]cell, 0, count)
 
-	if m.PassableAt(center.X, center.Y) {
+	if enterable(center.X, center.Y) {
 		result = append(result, center)
 	}
 
@@ -88,15 +97,16 @@ func nearbyPassableCells(m *GameMap, center cell, count int) []cell {
 			if len(result) >= count {
 				break
 			}
-			if m.PassableAt(c.X, c.Y) {
+			if enterable(c.X, c.Y) {
 				result = append(result, c)
 			}
 		}
 	}
 
-	// Ran out of passable cells nearby (a tiny isolated pocket, or a huge
-	// group order) — pad with center so callers always get exactly count
-	// entries; FindPath will just report those as unreachable.
+	// Ran out of usable cells nearby (a tiny isolated pocket, a crowded
+	// base, or a huge group order) — pad with center so callers always get
+	// exactly count entries; FindPath will just report those as
+	// unreachable, and callers that care re-test with enterable.
 	for len(result) < count {
 		result = append(result, center)
 	}
