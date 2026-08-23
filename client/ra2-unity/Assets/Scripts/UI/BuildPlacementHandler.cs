@@ -14,7 +14,6 @@ using UnityEngine.InputSystem;
 // a green preview it rejects simply does nothing.
 public class BuildPlacementHandler : MonoBehaviour
 {
-    [SerializeField] private WebSocketClient webSocketClient;
     [SerializeField] private GameManager gameManager;
     [SerializeField] private MapRenderer mapRenderer;
     [SerializeField] private Grid grid;
@@ -97,7 +96,7 @@ public class BuildPlacementHandler : MonoBehaviour
             // No itemType: the server already knows which structure is
             // waiting to be sited, and taking its word for it means the
             // client can't ask for something it never paid for.
-            webSocketClient.Send(new ClientCommand
+            gameManager.Send(new ClientCommand
             {
                 type = "place",
                 cellX = cell.x,

@@ -599,12 +599,11 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2038735235}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b75b9194d39ca9b4ab5d6d97ea20778a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WebSocketClient
-  url: ws://localhost:8080/ws
 --- !u!114 &2038735237
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -617,7 +616,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a96b790d9fd8cd2449d25745a601434c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
-  webSocketClient: {fileID: 2038735236}
   unitPrefab: {fileID: 5142601973354348247, guid: bec5f2bffbc2b9141a650c33db3d0c60, type: 3}
   mapRenderer: {fileID: 1230525272}
   grid: {fileID: 739674748}
@@ -651,7 +649,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edac45e62766510428783ba1381dc27c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InputHandler
-  webSocketClient: {fileID: 2038735236}
   grid: {fileID: 739674748}
   selectionHandler: {fileID: 2038735240}
   gameManager: {fileID: 2038735237}
@@ -685,7 +682,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4cda243b3e21f07429f88c294f236777, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BuildPanel
-  webSocketClient: {fileID: 2038735236}
   gameManager: {fileID: 2038735237}
   selectionHandler: {fileID: 2038735240}
   placementHandler: {fileID: 2038735242}
@@ -701,7 +697,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 460c2d029511e6d41a5a8f1fc7364005, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BuildPlacementHandler
-  webSocketClient: {fileID: 2038735236}
   gameManager: {fileID: 2038735237}
   mapRenderer: {fileID: 1230525272}
   grid: {fileID: 739674748}

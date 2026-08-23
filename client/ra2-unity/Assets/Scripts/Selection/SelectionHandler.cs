@@ -9,7 +9,6 @@ using UnityEngine.InputSystem;
 // right-click issues a move/attack order.
 public class SelectionHandler : MonoBehaviour
 {
-    private const int MyOwner = 1; // hardcoded until Phase 6 real player identity
     private const float ClickDragThreshold = 5f; // pixels
     private const float ClickSelectRadius = 40f; // pixels
 
@@ -93,7 +92,7 @@ public class SelectionHandler : MonoBehaviour
 
         foreach (UnitView unit in units)
         {
-            if (unit.Owner != MyOwner)
+            if (unit.Owner != gameManager.MyPlayerId)
             {
                 continue;
             }
@@ -127,7 +126,7 @@ public class SelectionHandler : MonoBehaviour
         SelectedUnitIds.Clear();
         foreach (UnitView unit in units)
         {
-            if (unit.Owner != MyOwner)
+            if (unit.Owner != gameManager.MyPlayerId)
             {
                 continue;
             }

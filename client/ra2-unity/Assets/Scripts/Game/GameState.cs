@@ -4,6 +4,52 @@ using System;
 // tags exactly (case-sensitive) — JsonUtility has no attribute-based
 // name mapping like Go's `json:"..."` tags.
 
+// Every server -> client message arrives in this envelope. Before Phase 6
+// the socket only ever carried GameState, so it could be deserialized
+// directly; now the same connection carries lobby traffic too. Payloads
+// the server omitted come through as null.
+[Serializable]
+public class ServerMessage
+{
+    public string type; // "rooms", "room", "state", "result", "error"
+    public RoomInfo[] rooms;
+    public RoomInfo room;
+    public GameState state;
+    public MatchResult result;
+    public string error;
+}
+
+// Sent once when a match is decided. outcome is already phrased from this
+// client's side, so there's no need to compare winner against our own id.
+[Serializable]
+public class MatchResult
+{
+    public int winner; // 0 = draw
+    public string outcome; // "win", "lose", "draw"
+}
+
+[Serializable]
+public class RoomInfo
+{
+    public int id;
+    public string name;
+    public string state; // "waiting", "playing", "finished"
+    public string victory; // "buildings", "conyard", "annihilation"
+    public PlayerInfo[] players;
+
+    // Only set on a "room" message addressed to a member — this is how a
+    // client learns which Owner in the world is theirs.
+    public int yourPlayerId;
+}
+
+[Serializable]
+public class PlayerInfo
+{
+    public int id;
+    public string name;
+    public bool ready;
+}
+
 [Serializable]
 public class GameState
 {
@@ -93,10 +139,20 @@ public class TileData
     public bool passable;
 }
 
+// Carries both lobby traffic ("listRooms", "createRoom", "joinRoom",
+// "leaveRoom", "setReady") and in-game orders, kept in one class because
+// JsonUtility has to commit to a single type per ToJson call.
 [Serializable]
 public class ClientCommand
 {
     public string type;
+
+    // lobby
+    public int roomId;
+    public string victory; // createRoom only
+    public string playerName;
+    public bool ready;
+
     public int[] unitIds;
     public double targetX;    // move
     public double targetY;    // move

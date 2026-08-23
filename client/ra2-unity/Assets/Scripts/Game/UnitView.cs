@@ -7,8 +7,6 @@ using UnityEngine;
 // by owner.
 public class UnitView : MonoBehaviour
 {
-    private const int MyOwner = 1; // hardcoded until Phase 6 real player identity
-
     // Blue/red rather than reusing the health bar's green — a friendly
     // unit tinted green would fight for meaning with a green "full HP"
     // bar sitting right above it.
@@ -24,10 +22,12 @@ public class UnitView : MonoBehaviour
     public HealthBar HealthBar => healthBar;
     public SelectionCircle SelectionCircle => selectionCircle;
 
-    public void Initialize(int unitId, int owner)
+    // myPlayerId comes from the server's seat assignment rather than a
+    // constant, so "friendly" means whoever is actually at the keyboard.
+    public void Initialize(int unitId, int owner, int myPlayerId)
     {
         UnitId = unitId;
         Owner = owner;
-        bodySprite.color = owner == MyOwner ? FriendlyColor : EnemyColor;
+        bodySprite.color = owner == myPlayerId ? FriendlyColor : EnemyColor;
     }
 }

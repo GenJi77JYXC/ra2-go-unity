@@ -11,17 +11,25 @@ using UnityEngine;
 // decoupled from the game layer (per the learning plan's Phase 1 design).
 public class WebSocketClient : MonoBehaviour
 {
-    [SerializeField] private string url = "ws://localhost:8080/ws";
-
     public event Action OnConnected;
     public event Action<string> OnDisconnected;
     public event Action<string> OnMessage;
 
+    public bool IsConnected => socket != null && socket.State == WebSocketState.Open;
+
     private ClientWebSocket socket;
     private CancellationTokenSource cts;
 
-    private async void Start()
+    // Connecting is triggered by the lobby rather than on Start, because
+    // the server address is something the player types in — there's no
+    // address to dial until they do.
+    public async void Connect(string url)
     {
+        if (socket != null)
+        {
+            return; // already connecting or connected
+        }
+
         cts = new CancellationTokenSource();
         socket = new ClientWebSocket();
 
@@ -32,6 +40,8 @@ public class WebSocketClient : MonoBehaviour
         catch (Exception e)
         {
             Debug.LogError($"[WebSocketClient] connect to {url} failed: {e.Message}");
+            socket = null; // let the player correct the address and retry
+            OnDisconnected?.Invoke(e.Message);
             return;
         }
 

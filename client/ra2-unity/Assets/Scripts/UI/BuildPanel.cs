@@ -9,9 +9,7 @@ using UnityEngine.InputSystem;
 // converted the same way the health bars were once the behavior is settled.
 public class BuildPanel : MonoBehaviour
 {
-    private const int MyOwner = 1; // hardcoded until Phase 6 real player identity
 
-    [SerializeField] private WebSocketClient webSocketClient;
     [SerializeField] private GameManager gameManager;
     [SerializeField] private SelectionHandler selectionHandler;
     [SerializeField] private BuildPlacementHandler placementHandler;
@@ -103,7 +101,7 @@ public class BuildPanel : MonoBehaviour
         {
             // No buildingId: that's what tells the server this cancels the
             // pending structure rather than a factory's unit queue.
-            webSocketClient.Send(new ClientCommand { type = "cancel" });
+            gameManager.Send(new ClientCommand { type = "cancel" });
         }
         GUI.enabled = true;
     }
@@ -127,7 +125,7 @@ public class BuildPanel : MonoBehaviour
     {
         if (!isPending)
         {
-            webSocketClient.Send(new ClientCommand { type = "build", itemType = option.type });
+            gameManager.Send(new ClientCommand { type = "build", itemType = option.type });
             return;
         }
 
@@ -177,7 +175,7 @@ public class BuildPanel : MonoBehaviour
 
             if (GUI.Button(buttonRect, label))
             {
-                webSocketClient.Send(new ClientCommand
+                gameManager.Send(new ClientCommand
                 {
                     type = "produce",
                     buildingId = factory.BuildingId,
@@ -195,7 +193,7 @@ public class BuildPanel : MonoBehaviour
         }
         else if (GUI.Button(primaryRect, "Set as primary"))
         {
-            webSocketClient.Send(new ClientCommand { type = "setPrimary", buildingId = factory.BuildingId });
+            gameManager.Send(new ClientCommand { type = "setPrimary", buildingId = factory.BuildingId });
         }
 
         var statusRect = new Rect(productionRect.x + 6f, productionRect.yMax - 50f, PanelWidth - 12f, 18f);
@@ -206,7 +204,7 @@ public class BuildPanel : MonoBehaviour
         var cancelRect = new Rect(productionRect.x + 6f, productionRect.yMax - 28f, PanelWidth - 12f, 22f);
         if (GUI.Button(cancelRect, "Cancel last order"))
         {
-            webSocketClient.Send(new ClientCommand { type = "cancel", buildingId = factory.BuildingId });
+            gameManager.Send(new ClientCommand { type = "cancel", buildingId = factory.BuildingId });
         }
     }
 
@@ -220,7 +218,7 @@ public class BuildPanel : MonoBehaviour
 
         foreach (BuildingView building in gameManager.Buildings)
         {
-            if (building.BuildingId == id && building.Owner == MyOwner && building.IsBuilt)
+            if (building.BuildingId == id && building.Owner == gameManager.MyPlayerId && building.IsBuilt)
             {
                 return building;
             }
@@ -233,7 +231,7 @@ public class BuildPanel : MonoBehaviour
         var types = new HashSet<string>();
         foreach (BuildingView building in gameManager.Buildings)
         {
-            if (building.Owner == MyOwner && building.IsBuilt)
+            if (building.Owner == gameManager.MyPlayerId && building.IsBuilt)
             {
                 types.Add(building.BuildingType);
             }

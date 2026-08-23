@@ -5,8 +5,6 @@ using UnityEngine;
 // diamonds sized to their footprint, with no per-type art to hand-place.
 public class BuildingView : MonoBehaviour
 {
-    private const int MyOwner = 1; // hardcoded until Phase 6 real player identity
-
     private static readonly Color FriendlyColor = new(0.30f, 0.45f, 0.75f);
     private static readonly Color EnemyColor = new(0.70f, 0.30f, 0.30f);
 
@@ -30,15 +28,15 @@ public class BuildingView : MonoBehaviour
 
     public HealthBar HealthBar { get; private set; }
 
-    public static BuildingView Create(Grid grid, Sprite diamond, Sprite barSprite, BuildingSnapshot snapshot, int width, int height)
+    public static BuildingView Create(Grid grid, Sprite diamond, Sprite barSprite, BuildingSnapshot snapshot, int width, int height, int myPlayerId)
     {
         var obj = new GameObject($"Building_{snapshot.type}_{snapshot.id}");
         var view = obj.AddComponent<BuildingView>();
-        view.Initialize(grid, diamond, barSprite, snapshot, width, height);
+        view.Initialize(grid, diamond, barSprite, snapshot, width, height, myPlayerId);
         return view;
     }
 
-    private void Initialize(Grid grid, Sprite diamond, Sprite barSprite, BuildingSnapshot snapshot, int width, int height)
+    private void Initialize(Grid grid, Sprite diamond, Sprite barSprite, BuildingSnapshot snapshot, int width, int height, int myPlayerId)
     {
         BuildingId = snapshot.id;
         BuildingType = snapshot.type;
@@ -53,7 +51,7 @@ public class BuildingView : MonoBehaviour
         sprite.sortingLayerName = "Units";
         sprite.sortingOrder = -2; // under units, over terrain
 
-        baseColor = snapshot.owner == MyOwner ? FriendlyColor : EnemyColor;
+        baseColor = snapshot.owner == myPlayerId ? FriendlyColor : EnemyColor;
 
         // The footprint's center in cell space is half its size past its
         // lower-left corner; the diamond sprite is exactly one cell, so

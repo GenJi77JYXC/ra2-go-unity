@@ -7,14 +7,12 @@ using UnityEngine.InputSystem;
 // Update().
 public class InputHandler : MonoBehaviour
 {
-    [SerializeField] private WebSocketClient webSocketClient;
     [SerializeField] private Grid grid;
     [SerializeField] private SelectionHandler selectionHandler;
     [SerializeField] private GameManager gameManager;
     [SerializeField] private BuildPanel buildPanel;
     [SerializeField] private BuildPlacementHandler placementHandler;
 
-    private const int MyOwner = 1; // hardcoded until Phase 6 real player identity
 
     private void Update()
     {
@@ -43,7 +41,7 @@ public class InputHandler : MonoBehaviour
         Vector3 worldPoint = Camera.main.ScreenToWorldPoint(screenPos);
 
         UnitView clickedUnit = HitTestUnit(worldPoint);
-        if (clickedUnit != null && clickedUnit.Owner != MyOwner)
+        if (clickedUnit != null && clickedUnit.Owner != gameManager.MyPlayerId)
         {
             SendAttack(unitIds, clickedUnit.UnitId);
             return;
@@ -59,13 +57,13 @@ public class InputHandler : MonoBehaviour
         // BoxCollider2D matches.
         BuildingView clickedBuilding = gameManager.BuildingAtCell(
             Mathf.FloorToInt(cell.x), Mathf.FloorToInt(cell.y));
-        if (clickedBuilding != null && clickedBuilding.Owner != MyOwner)
+        if (clickedBuilding != null && clickedBuilding.Owner != gameManager.MyPlayerId)
         {
             SendAttack(unitIds, clickedBuilding.BuildingId);
             return;
         }
 
-        webSocketClient.Send(new ClientCommand
+        gameManager.Send(new ClientCommand
         {
             type = "move",
             unitIds = unitIds,
@@ -79,7 +77,7 @@ public class InputHandler : MonoBehaviour
     // need to say which kind it means.
     private void SendAttack(int[] unitIds, int targetId)
     {
-        webSocketClient.Send(new ClientCommand
+        gameManager.Send(new ClientCommand
         {
             type = "attack",
             unitIds = unitIds,

@@ -11,7 +11,6 @@ using UnityEngine;
 // destroys the GameObject for any unit that drops out of the snapshot.
 public class GameManager : MonoBehaviour
 {
-    [SerializeField] private WebSocketClient webSocketClient;
     [SerializeField] private GameObject unitPrefab;
     [SerializeField] private MapRenderer mapRenderer;
     [SerializeField] private Grid grid;
@@ -76,14 +75,43 @@ public class GameManager : MonoBehaviour
         return null;
     }
 
-    private void OnEnable()
+    // Which Owner in the world this client controls, assigned by the
+    // server when the player took a seat. Read from the session rather
+    // than stored, so there's one source of truth for it.
+    public int MyPlayerId => session != null ? session.MyPlayerId : 0;
+
+    private LobbyController session;
+
+    // The connection lives on the persistent NetworkSession object, which
+    // an Inspector field in this scene can't reach — hence the lookup.
+    private void Start()
     {
-        webSocketClient.OnMessage += HandleMessage;
+        if (NetworkSession.Instance == null)
+        {
+            Debug.LogError("[GameManager] no NetworkSession — start from the Menu scene.");
+            return;
+        }
+
+        session = NetworkSession.Instance.Lobby;
+        session.RegisterGameManager(this); // replays anything buffered during the scene load
     }
 
-    private void OnDisable()
+    private void OnDestroy()
     {
-        webSocketClient.OnMessage -= HandleMessage;
+        if (session != null)
+        {
+            session.UnregisterGameManager(this);
+        }
+    }
+
+    // Everything in the scene sends through here, so only this one script
+    // has to know where the connection lives.
+    public void Send(ClientCommand cmd)
+    {
+        if (session != null)
+        {
+            session.Send(cmd);
+        }
     }
 
     private void Update()
@@ -95,9 +123,15 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    private void HandleMessage(string json)
+    // Called by LobbyController once it has unwrapped the envelope — this
+    // no longer subscribes to raw messages, since the same socket now also
+    // carries lobby traffic that means nothing here.
+    public void HandleState(GameState state)
     {
-        GameState state = JsonUtility.FromJson<GameState>(json);
+        if (state == null)
+        {
+            return;
+        }
 
         if (state.isInitial)
         {
@@ -127,7 +161,7 @@ public class GameManager : MonoBehaviour
                 // see the setup instructions — so this is a plain
                 // GetComponent, not AddComponent.
                 view = Instantiate(unitPrefab).GetComponent<UnitView>();
-                view.Initialize(unit.id, unit.owner);
+                view.Initialize(unit.id, unit.owner, MyPlayerId);
                 units[unit.id] = view;
             }
 
@@ -172,7 +206,7 @@ public class GameManager : MonoBehaviour
             int width = option?.width ?? 3;
             int height = option?.height ?? 3;
 
-            buildings[snapshot.id] = BuildingView.Create(grid, buildingSprite, barSprite, snapshot, width, height);
+            buildings[snapshot.id] = BuildingView.Create(grid, buildingSprite, barSprite, snapshot, width, height, MyPlayerId);
         }
 
         List<int> goneIds = buildings.Keys.Where(id => !seen.Contains(id)).ToList();
