@@ -164,9 +164,19 @@ func (w *World) updateConstruction(dt float64) {
 			continue
 		}
 
+		// Losing every Construction Yard scraps whatever was on the way
+		// rather than freezing it: with nothing left to build from, the
+		// order can never finish, and the original game refunds it too.
+		yards := w.countBuildings(p.ID, "ConstructionYard")
+		if yards == 0 {
+			p.refund(c.Paid)
+			p.Pending = nil
+			continue
+		}
+
 		// Extra Construction Yards speed the build up, same as extra
-		// factories do for units; with none left, construction stalls.
-		speed := w.powerFactor(p.ID) * productionSpeed(w.countBuildings(p.ID, "ConstructionYard"))
+		// factories do for units.
+		speed := w.powerFactor(p.ID) * productionSpeed(yards)
 
 		progress, ok := w.chargeProgress(p, c.Progress, &c.Paid, dt*speed, t.BuildTime, float64(t.Cost))
 		if !ok {
@@ -189,9 +199,17 @@ func (w *World) updateProduction(dt float64) {
 				continue
 			}
 
+			// Losing every factory of a type cancels that queue and
+			// refunds it, for the same reason construction is scrapped
+			// when the last Construction Yard falls: nothing is left to
+			// produce from, so the order can never complete.
 			factory := w.primaryBuilding(p.ID, category)
 			if factory == nil {
-				continue // every factory of this type is gone: queue stalls
+				p.refund(q.Paid)
+				q.Items = nil
+				q.Progress = 0
+				q.Paid = 0
+				continue
 			}
 
 			speed := w.powerFactor(p.ID) * productionSpeed(w.countBuildings(p.ID, category))
