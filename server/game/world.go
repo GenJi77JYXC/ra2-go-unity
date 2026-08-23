@@ -101,6 +101,10 @@ type World struct {
 	Players   map[int]*Player
 	Map       *GameMap
 
+	// Victory is the rule this match is played under, chosen by whoever
+	// created the room (see victory.go).
+	Victory string
+
 	// nextID is a single ID space shared by units and buildings, so a
 	// command naming an ID can never be ambiguous about which it meant.
 	nextID int
@@ -112,10 +116,15 @@ type World struct {
 // pre-built Construction Yard per side to seed Phase 5's tech tree. Owner 1
 // is hardcoded as "the player" and Owner 2 as "the enemy" until Phase 6
 // adds real multiplayer identity.
-func NewWorld() *World {
+func NewWorld(victory string) *World {
+	if !ValidVictoryCondition(victory) {
+		victory = VictoryBuildings
+	}
+
 	w := &World{
 		Map:     NewTestMap(),
 		Players: map[int]*Player{1: newPlayer(1), 2: newPlayer(2)},
+		Victory: victory,
 	}
 
 	for _, u := range []struct {
@@ -442,8 +451,9 @@ type Snapshot struct {
 	Buildings []*Building `json:"buildings"`
 
 	// Economy is the viewing player's own money/power, and the structure
-	// they're currently building. Phase 6 will need all of this to be
-	// per-connection; for now every client is Owner 1.
+	// they're currently building — units and buildings are shared (there's
+	// no fog of war yet, ownership is read off their Owner field), but
+	// this part differs per viewer, which is why Snapshot takes one.
 	Money int `json:"money"`
 	Power int `json:"power"`
 
@@ -464,14 +474,16 @@ type QueueState struct {
 	Length   int     `json:"length"`
 }
 
-func (w *World) Snapshot() Snapshot {
+// Snapshot builds the view of the world sent to one player. Everything but
+// the economy block is identical for every viewer.
+func (w *World) Snapshot(forOwner int) Snapshot {
 	money := 0
 	pendingType := ""
 	pendingProgress := 0.0
 	pendingReady := false
 	var queues []QueueState
 
-	if p := w.Players[defaultOwner]; p != nil {
+	if p := w.Players[forOwner]; p != nil {
 		money = p.Money
 		if c := p.Pending; c != nil {
 			pendingType = c.Type
@@ -486,7 +498,7 @@ func (w *World) Snapshot() Snapshot {
 		Units:           w.Units,
 		Buildings:       w.Buildings,
 		Money:           money,
-		Power:           w.NetPower(defaultOwner),
+		Power:           w.NetPower(forOwner),
 		PendingType:     pendingType,
 		PendingProgress: pendingProgress,
 		PendingReady:    pendingReady,

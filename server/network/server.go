@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"sync"
 
 	"server/game"
@@ -12,67 +13,25 @@ import (
 	"github.com/coder/websocket"
 )
 
-// defaultOwner is hardcoded until Phase 6 gives connections real player
-// identity — every command is treated as coming from player 1.
-const defaultOwner = 1
-
-// Server owns the HTTP endpoint and all connected clients.
+// Server owns the HTTP endpoint and hands connections to the lobby.
 //
-// Client bookkeeping (registering/removing connections) is guarded by mu.
-// This is separate from the World-mutation rule in main.go: World is only
-// ever touched by the tick-loop goroutine, but the connection map is pure
-// network state, so an ordinary mutex is fine here. Commands parsed off a
-// connection go through the commands channel instead, so main.go's tick
-// loop — not this per-connection goroutine — is what actually calls into
-// World.
+// It no longer holds a World: each Room owns its own, and each Room's tick
+// loop is the single writer to it. A connection goroutine never touches
+// game state directly — it parses a message and either calls a lobby
+// method (guarded by Room.mu) or drops a command on the room's channel.
 type Server struct {
-	world *game.World
+	rooms *RoomManager
 
 	mu      sync.Mutex
 	clients map[*Client]struct{}
 	nextID  int
-
-	commands   chan game.Command
-	newClients chan *Client
 }
 
-func NewServer(world *game.World) *Server {
+func NewServer(rooms *RoomManager) *Server {
 	return &Server{
-		world:      world,
-		clients:    make(map[*Client]struct{}),
-		commands:   make(chan game.Command, 32),
-		newClients: make(chan *Client, 8),
+		rooms:   rooms,
+		clients: make(map[*Client]struct{}),
 	}
-}
-
-// Commands is drained by main.go's tick loop once per tick.
-func (s *Server) Commands() <-chan game.Command {
-	return s.commands
-}
-
-// DrainNewClients sends the current full world state — including the
-// static map, which regular Broadcast calls never include — to every
-// client that connected since the last tick. Like HandleCommand, this must
-// only ever be called from the tick-loop goroutine: it reads s.world
-// directly, which is only safe there.
-func (s *Server) DrainNewClients() {
-	for {
-		select {
-		case client := <-s.newClients:
-			s.sendInitialSnapshot(client)
-		default:
-			return
-		}
-	}
-}
-
-func (s *Server) sendInitialSnapshot(client *Client) {
-	data, err := json.Marshal(initialGameState(s.world))
-	if err != nil {
-		log.Printf("marshal initial snapshot failed: %v", err)
-		return
-	}
-	client.Send(data)
 }
 
 func (s *Server) ListenAndServe(addr string) {
@@ -95,16 +54,36 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	go client.writePump()
 
-	s.readCommands(conn)
+	s.readMessages(client, conn)
 }
 
-// readCommands blocks reading messages from conn until it closes or errors,
-// forwarding valid move commands to s.commands. This replaces Phase 1's
-// CloseRead placeholder — actively reading is also what makes the
-// underlying library handle ping/pong control frames, regardless of
-// whether the payload itself is interesting.
-func (s *Server) readCommands(conn *websocket.Conn) {
+// session is the per-connection state the read loop owns outright. Keeping
+// it in local scope rather than on Client means no other goroutine can
+// read a half-updated membership — the room holds its own player list for
+// broadcasting, and this is only ever used to route what this connection
+// sends.
+type session struct {
+	room   *Room
+	player *RoomPlayer
+}
+
+// readMessages blocks reading from conn until it closes or errors,
+// dispatching lobby traffic and forwarding in-game orders to the client's
+// room. Actively reading is also what makes the underlying library handle
+// ping/pong control frames.
+func (s *Server) readMessages(client *Client, conn *websocket.Conn) {
 	ctx := context.Background()
+	var sess session
+
+	// Leaving on disconnect has to happen however the loop exits, not just
+	// on a clean "leaveRoom" — a browser closing mid-match still has to
+	// free the seat.
+	defer func() {
+		if sess.room != nil {
+			s.leaveRoom(&sess)
+		}
+	}()
+
 	for {
 		_, data, err := conn.Read(ctx)
 		if err != nil {
@@ -117,18 +96,92 @@ func (s *Server) readCommands(conn *websocket.Conn) {
 			continue
 		}
 
-		switch cmd.Type {
-		case "move", "attack", "build", "place", "produce", "cancel", "setPrimary":
-		default:
-			continue // unknown command type
+		s.handleMessage(client, &sess, cmd)
+	}
+}
+
+func (s *Server) handleMessage(client *Client, sess *session, cmd ClientCommand) {
+	switch cmd.Type {
+	case "listRooms":
+		client.Send(mustMarshal(ServerMessage{Type: "rooms", Rooms: s.rooms.list()}))
+
+	case "createRoom":
+		room := s.rooms.create(roomName(cmd), cmd.Victory)
+		s.joinRoom(client, sess, room, cmd.PlayerName)
+
+	case "joinRoom":
+		room := s.rooms.get(cmd.RoomID)
+		if room == nil {
+			sendError(client, "room not found")
+			return
+		}
+		s.joinRoom(client, sess, room, cmd.PlayerName)
+
+	case "leaveRoom":
+		if sess.room != nil {
+			s.leaveRoom(sess)
 		}
 
-		select {
-		case s.commands <- toGameCommand(cmd):
-		default:
-			log.Printf("command buffer full, dropping command")
+	case "setReady":
+		if sess.room == nil {
+			return
 		}
+		if started := sess.room.setReady(sess.player, cmd.Ready); started {
+			log.Printf("room %d starting: all players ready", sess.room.ID)
+		}
+		sess.room.notifyRoomState()
+
+	default:
+		s.forwardGameCommand(sess, cmd)
 	}
+}
+
+// forwardGameCommand hands an in-game order to the room's tick loop,
+// stamped with the sender's real seat. This is the line that replaces the
+// hardcoded owner every phase since Phase 2 was written against — the
+// ownership checks inside game.HandleCommand finally have a value that can
+// differ between callers.
+func (s *Server) forwardGameCommand(sess *session, cmd ClientCommand) {
+	switch cmd.Type {
+	case "move", "attack", "build", "place", "produce", "cancel", "setPrimary":
+	default:
+		return // unknown command type
+	}
+
+	if sess.room == nil || sess.player == nil {
+		return // not in a room: nothing to command
+	}
+
+	sess.room.submit(toGameCommand(cmd, sess.player.ID))
+}
+
+func (s *Server) joinRoom(client *Client, sess *session, room *Room, name string) {
+	if sess.room != nil {
+		s.leaveRoom(sess)
+	}
+
+	player, err := room.join(client, playerName(name, client.ID))
+	if err != nil {
+		sendError(client, err.Error())
+		return
+	}
+
+	sess.room = room
+	sess.player = player
+	log.Printf("client %d joined room %d as player %d", client.ID, room.ID, player.ID)
+
+	room.notifyRoomState()
+}
+
+func (s *Server) leaveRoom(sess *session) {
+	room, player := sess.room, sess.player
+	sess.room, sess.player = nil, nil
+
+	if room.leave(player) {
+		s.rooms.remove(room.ID)
+		return
+	}
+	room.notifyRoomState()
 }
 
 func (s *Server) addClient(conn *websocket.Conn) *Client {
@@ -139,13 +192,6 @@ func (s *Server) addClient(conn *websocket.Conn) *Client {
 	client := newClient(s.nextID, conn)
 	s.clients[client] = struct{}{}
 	log.Printf("client %d connected (total=%d)", client.ID, len(s.clients))
-
-	select {
-	case s.newClients <- client:
-	default:
-		log.Printf("new-client buffer full, client %d won't get initial map snapshot", client.ID)
-	}
-
 	return client
 }
 
@@ -159,19 +205,22 @@ func (s *Server) removeClient(client *Client) {
 	log.Printf("client %d disconnected (total=%d)", client.ID, total)
 }
 
-// Broadcast sends the latest snapshot to every connected client.
-func (s *Server) Broadcast(snapshot game.Snapshot) {
-	data, err := json.Marshal(toGameState(snapshot))
-	if err != nil {
-		log.Printf("marshal snapshot failed: %v", err)
-		return
-	}
+func sendError(client *Client, message string) {
+	client.Send(mustMarshal(ServerMessage{Type: "error", Error: message}))
+}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for client := range s.clients {
-		client.Send(data)
+func roomName(cmd ClientCommand) string {
+	if cmd.PlayerName == "" {
+		return "Room"
 	}
+	return cmd.PlayerName + "'s room"
+}
+
+func playerName(name string, clientID int) string {
+	if name == "" {
+		return "Player " + strconv.Itoa(clientID)
+	}
+	return name
 }
 
 func toGameState(snapshot game.Snapshot) GameState {
@@ -188,9 +237,10 @@ func toGameState(snapshot game.Snapshot) GameState {
 	}
 }
 
-// initialGameState is the one-off full-state message a new connection gets
-// (see DrainNewClients) — it's the only GameState that carries the map.
-func initialGameState(world *game.World) GameState {
+// initialGameState is the one-off full-state message each player gets when
+// their match starts — it's the only GameState that carries the map and
+// the build menu.
+func initialGameState(world *game.World, forOwner int) GameState {
 	m := world.Map
 	tiles := make([]TileData, 0, m.Width*m.Height)
 	for y := 0; y < m.Height; y++ {
@@ -200,25 +250,13 @@ func initialGameState(world *game.World) GameState {
 		}
 	}
 
-	snapshot := world.Snapshot()
-
-	return GameState{
-		Tick:      world.TickCount,
-		IsInitial: true,
-		MapWidth:  m.Width,
-		MapHeight: m.Height,
-		Tiles:     tiles,
-		BuildMenu: toBuildMenu(),
-		Units:     toUnitSnapshots(world.Units),
-		Buildings: toBuildingSnapshots(world.Buildings),
-
-		Money:           snapshot.Money,
-		Power:           snapshot.Power,
-		PendingType:     snapshot.PendingType,
-		PendingProgress: snapshot.PendingProgress,
-		PendingReady:    snapshot.PendingReady,
-		Queues:          toQueueSnapshots(snapshot.Queues),
-	}
+	state := toGameState(world.Snapshot(forOwner))
+	state.IsInitial = true
+	state.MapWidth = m.Width
+	state.MapHeight = m.Height
+	state.Tiles = tiles
+	state.BuildMenu = toBuildMenu()
+	return state
 }
 
 func toBuildMenu() []BuildOption {
@@ -277,7 +315,7 @@ func toUnitSnapshots(units []*game.Unit) []UnitSnapshot {
 	return out
 }
 
-func toGameCommand(cmd ClientCommand) game.Command {
+func toGameCommand(cmd ClientCommand, owner int) game.Command {
 	return game.Command{
 		Type:         cmd.Type,
 		UnitIDs:      cmd.UnitIDs,
@@ -288,6 +326,6 @@ func toGameCommand(cmd ClientCommand) game.Command {
 		CellX:        cmd.CellX,
 		CellY:        cmd.CellY,
 		BuildingID:   cmd.BuildingID,
-		Owner:        defaultOwner,
+		Owner:        owner,
 	}
 }

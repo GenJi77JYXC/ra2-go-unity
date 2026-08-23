@@ -1,5 +1,46 @@
 package network
 
+// ServerMessage wraps everything sent server -> client. Before Phase 6 the
+// only thing a connection ever received was a GameState, so it could be
+// unmarshalled directly; now the same socket carries lobby traffic too and
+// the receiver needs to know which it's looking at. Unused payloads are
+// omitted so a room list doesn't drag an empty world along with it.
+type ServerMessage struct {
+	Type   string       `json:"type"` // "rooms", "room", "state", "result", "error"
+	Rooms  []RoomInfo   `json:"rooms,omitempty"`
+	Room   *RoomInfo    `json:"room,omitempty"`
+	State  *GameState   `json:"state,omitempty"`
+	Result *MatchResult `json:"result,omitempty"`
+	Error  string       `json:"error,omitempty"`
+}
+
+// MatchResult is sent once when a match is decided. Outcome is phrased
+// from the receiving player's side so the client doesn't have to work out
+// whether a winner id means them.
+type MatchResult struct {
+	Winner  int    `json:"winner"`  // 0 = draw
+	Outcome string `json:"outcome"` // "win", "lose", "draw"
+}
+
+// RoomInfo describes a room in the lobby. YourPlayerID is only meaningful
+// in a "room" message addressed to a member — it's how a client learns
+// which Owner in the world is theirs, replacing the hardcoded 1 that stood
+// in for identity from Phase 2 through Phase 5.
+type RoomInfo struct {
+	ID           int          `json:"id"`
+	Name         string       `json:"name"`
+	State        string       `json:"state"`   // "waiting", "playing", "finished"
+	Victory      string       `json:"victory"` // "buildings", "conyard", "annihilation"
+	Players      []PlayerInfo `json:"players"`
+	YourPlayerID int          `json:"yourPlayerId,omitempty"`
+}
+
+type PlayerInfo struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	Ready bool   `json:"ready"`
+}
+
 // GameState is sent server -> client every tick.
 // Field names must match Unity's [Serializable] struct exactly
 // (JsonUtility.FromJson<T>() is case-sensitive).
@@ -87,9 +128,20 @@ type UnitSnapshot struct {
 	MaxHP int     `json:"maxHp"`
 }
 
-// ClientCommand is sent client -> server.
+// ClientCommand is sent client -> server. It carries both lobby traffic
+// ("listRooms", "createRoom", "joinRoom", "leaveRoom", "setReady") and
+// in-game orders ("move", "attack", "build", "place", "produce", "cancel",
+// "setPrimary"), kept in one struct because Unity's JsonUtility has to
+// commit to a single type per FromJson call.
 type ClientCommand struct {
-	Type         string  `json:"type"` // "move", "attack", "build", "produce" or "cancel"
+	Type string `json:"type"`
+
+	// lobby
+	RoomID     int    `json:"roomId"`
+	Victory    string `json:"victory"` // createRoom only
+	PlayerName string `json:"playerName"`
+	Ready      bool   `json:"ready"`
+
 	UnitIDs      []int   `json:"unitIds"`
 	TargetX      float64 `json:"targetX"`      // move
 	TargetY      float64 `json:"targetY"`      // move

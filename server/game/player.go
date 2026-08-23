@@ -3,11 +3,6 @@ package game
 import "math"
 
 const (
-	// defaultOwner is whose economy gets put in the broadcast snapshot.
-	// Every connection is treated as this player until Phase 6 gives
-	// connections real identity — mirrors network.defaultOwner.
-	defaultOwner = 1
-
 	startingMoney = 5000
 
 	// passiveIncome stands in for ore harvesting, which no phase of the
