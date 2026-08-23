@@ -45,9 +45,27 @@ RA2 风格 RTS 学习项目 —— Go 服务端 + Unity 客户端。
 
 实现见 [server/game/victory.go](server/game/victory.go)。
 
-## 已知问题(暂缓处理)
+## 单位避让与占地
 
-- **单位寻路时互相没有碰撞/避让**:多个单位一起收到移动指令时,最终目的地会被分散到不同格子(见 `nearbyPassableCells`),但**移动过程中**互相之间没有任何感知,路径重叠时会直接穿模。真正的局部避让(steering / reciprocal velocity obstacles 之类)工程量不小,且不在学习计划任何一个 Phase 的里程碑范围内。**已排期在 Phase 6 之后处理。** 代码里的标记见 [server/game/world.go](server/game/world.go) `Unit.update` 方法上的 `TODO(known gap, deferred)` 注释。
+单位按格占地:要离开当前格,得先**预约**下一格,过渡期间同时占住两格,
+所以谁也钻不进别人正在跨越的缝里。建筑同样占地,寻路会绕开而不是穿过去。
+
+被挡住之后是分级处理的,直接重新寻路会让单位互相蹭来蹭去:
+
+| 情况 | 处理 |
+|---|---|
+| 挡住不到 0.5 秒 | 原地等——大多数堵塞自己就散了 |
+| 超过 0.5 秒 | 重新寻路,这次把其他单位占的格也算障碍 |
+| 绕不开,挡路的是静止单位 | 让对方挪一格;它挪完会停 1 秒,不然刚让开就走回来 |
+| 正面对堵 | 按单位 ID 决定谁让,保证只有一个人动 |
+| 挡住满 3 秒 | 放弃这次指令 |
+
+单位记着自己的最终目的地(`Goal`),所以让完路会自己接着走原来的行程。
+一个例外:**只检查要进入的格,不检查当前所在的格**——建筑可以盖在单位头上,
+被盖住的单位必须还能走出来。
+
+实现见 [server/game/occupancy.go](server/game/occupancy.go),
+测试见 [server/game/movement_test.go](server/game/movement_test.go)。
 
 ## 快速开始
 
