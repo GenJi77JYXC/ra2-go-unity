@@ -1,11 +1,19 @@
 package game
 
-import "math"
+import (
+	"log"
+	"math"
+)
 
 // lowPowerSpeedFactor slows construction and production when a player's
 // net power is negative, per the learning plan's Phase 5 note. It doesn't
 // stall them outright — a browned-out base still limps along.
 const lowPowerSpeedFactor = 0.5
+
+// sellRefund is the share of a structure's cost handed back when it's
+// sold, at the original's rate. Half, so that shuffling a base around is a
+// real cost rather than a free redesign.
+const sellRefund = 0.5
 
 // Building is a placed structure. It occupies a Width x Height block of
 // cells with CellX/CellY as its lower-left corner.
@@ -337,6 +345,34 @@ func (w *World) spawnUnit(unitType string, from *Building) {
 		w.addUnit(pos.X, pos.Y, from.Owner, unitType)
 		return
 	}
+}
+
+// sell tears a structure down and hands back part of what it cost.
+//
+// Teardown goes through the same path a destroyed building takes — HP to
+// zero, and removeDestroyed does the rest later this tick — so clearing
+// attackers and handing on the primary flag are handled in one place
+// rather than two that can drift apart.
+//
+// Nothing is exempt. Selling the last Construction Yard, or every
+// structure you own, is allowed and will lose you the match under the
+// buildings rule: that's the original's behaviour, and a player who wants
+// to concede that way should be able to.
+func (w *World) sell(owner, buildingID int) {
+	b := w.findBuilding(buildingID)
+	if b == nil || b.Owner != owner || !b.IsBuilt || b.HP <= 0 {
+		return
+	}
+	player := w.Players[owner]
+	if player == nil {
+		return
+	}
+
+	refund := float64(buildingTemplates[b.Type].Cost) * sellRefund
+	player.refund(refund)
+	b.HP = 0
+
+	log.Printf("player %d sold building %d (%s) for %.0f", owner, b.ID, b.Type, refund)
 }
 
 func (w *World) buildingAt(x, y int) *Building {

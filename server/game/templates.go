@@ -75,10 +75,13 @@ var buildingTemplates = map[string]BuildingTemplate{
 	// The refinery is the only source of income, so it has to be reachable
 	// from a bare Construction Yard — but it draws power, which makes
 	// "power plant first or refinery first" the opening decision.
+	//
+	// It builds nothing: in the original, a refinery arrives with one
+	// harvester and any further ones come off the war factory line, which
+	// is what makes "another harvester or another tank" a real choice.
 	"OreRefinery": {
 		MaxHP: 600, Armor: "heavy", Cost: 1400, BuildTime: 10,
 		Width: 3, Height: 3, Power: -50,
-		Produces:      []string{"Harvester"},
 		Prerequisites: []string{"ConstructionYard"},
 	},
 	"Barracks": {
@@ -87,10 +90,12 @@ var buildingTemplates = map[string]BuildingTemplate{
 		Produces:      []string{"Infantry"},
 		Prerequisites: []string{"ConstructionYard", "PowerPlant"},
 	},
+	// Vehicles share one queue, harvesters included — so every harvester
+	// is a tank not being built, exactly as in the original.
 	"WarFactory": {
 		MaxHP: 600, Armor: "heavy", Cost: 2000, BuildTime: 15,
 		Width: 3, Height: 3, Power: -100,
-		Produces:      []string{"Tank"},
+		Produces:      []string{"Tank", "Harvester"},
 		Prerequisites: []string{"ConstructionYard", "Barracks"},
 	},
 }
