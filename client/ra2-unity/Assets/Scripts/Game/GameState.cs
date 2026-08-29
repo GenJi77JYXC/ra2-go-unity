@@ -35,6 +35,11 @@ public class RoomInfo
     public string name;
     public string state; // "waiting", "playing", "finished"
     public string victory; // "buildings", "conyard", "annihilation"
+
+    // The other seat is the computer, so this room needs one human rather
+    // than two and starts as soon as that one is ready.
+    public bool vsAi;
+
     public PlayerInfo[] players;
 
     // Only set on a "room" message addressed to a member — this is how a
@@ -181,6 +186,7 @@ public class ClientCommand
     // lobby
     public int roomId;
     public string victory; // createRoom only
+    public bool vsAi; // createRoom only
     public string playerName;
     public bool ready;
 

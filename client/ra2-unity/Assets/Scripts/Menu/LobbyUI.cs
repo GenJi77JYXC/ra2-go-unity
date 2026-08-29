@@ -21,6 +21,10 @@ public class LobbyUI : MonoBehaviour
     private string serverUrl;
     private int victoryIndex;
 
+    // Whether the next room created plays against the computer. Local UI
+    // state — the room itself is told once, at creation.
+    private bool vsComputer;
+
     private void Awake()
     {
         serverUrl = defaultServerUrl;
@@ -105,15 +109,20 @@ public class LobbyUI : MonoBehaviour
             {
                 type = "createRoom",
                 victory = VictoryConditions[victoryIndex],
+                vsAi = vsComputer,
             });
         }
 
         // Whoever creates the room picks the rule; clicking cycles it.
         GUI.Label(new Rect(panel.x + 16f, panel.y + 58f, 90f, 20f), "Defeat when");
-        if (GUI.Button(new Rect(panel.x + 110f, panel.y + 56f, 274f, 22f), $"{VictoryLabels[victoryIndex]} destroyed"))
+        if (GUI.Button(new Rect(panel.x + 110f, panel.y + 56f, 186f, 22f), $"{VictoryLabels[victoryIndex]} destroyed"))
         {
             victoryIndex = (victoryIndex + 1) % VictoryConditions.Length;
         }
+
+        // Both settings belong to the room and are fixed at creation, so
+        // they sit together on the same row as the Create button above.
+        vsComputer = GUI.Toggle(new Rect(panel.x + 304f, panel.y + 58f, 84f, 20f), vsComputer, " vs AI");
 
         RoomInfo[] rooms = controller.Rooms;
         if (rooms.Length == 0)
@@ -127,11 +136,13 @@ public class LobbyUI : MonoBehaviour
             var row = new Rect(panel.x + 16f, panel.y + 86f + i * 30f, 368f, 26f);
 
             GUI.Label(new Rect(row.x, row.y + 3f, 260f, 20f),
-                $"{room.name}  [{room.state}]  {PlayerCount(room)}/2  · {VictoryLabel(room.victory)}");
+                $"{room.name}  [{room.state}]  {PlayerCount(room)}/{Seats(room)}"
+                + $"{(room.vsAi ? " vs AI" : "")}  · {VictoryLabel(room.victory)}");
 
             // The server enforces this too; disabling the button just
-            // avoids a pointless round trip.
-            GUI.enabled = room.state == "waiting" && PlayerCount(room) < 2;
+            // avoids a pointless round trip. A room against the computer
+            // has no seat to join — its second one is already taken.
+            GUI.enabled = room.state == "waiting" && PlayerCount(room) < Seats(room);
             if (GUI.Button(new Rect(row.xMax - 70f, row.y, 70f, 24f), "Join"))
             {
                 controller.Send(new ClientCommand { type = "joinRoom", roomId = room.id });
@@ -156,8 +167,16 @@ public class LobbyUI : MonoBehaviour
                 $"{players[i].name}   {(players[i].ready ? "READY" : "waiting…")}");
         }
 
-        GUI.Label(new Rect(panel.x + 16f, panel.y + 78f + players.Length * 24f + 8f, 360f, 20f),
-            players.Length < 2 ? "Waiting for another player…" : "Both here — ready up to start.");
+        string status;
+        if (room.vsAi)
+        {
+            status = "The computer holds the other seat — ready up to start.";
+        }
+        else
+        {
+            status = players.Length < 2 ? "Waiting for another player…" : "Both here — ready up to start.";
+        }
+        GUI.Label(new Rect(panel.x + 16f, panel.y + 78f + players.Length * 24f + 8f, 360f, 20f), status);
 
         bool iAmReady = IsReady(room.yourPlayerId, players);
         if (GUI.Button(new Rect(panel.x + 16f, panel.yMax - 76f, 180f, 28f), iAmReady ? "Not ready" : "Ready"))
@@ -187,6 +206,13 @@ public class LobbyUI : MonoBehaviour
             _ => "The last match was a draw",
         };
         GUI.Label(new Rect(panel.x + 16f, panel.yMax - 58f, 368f, 20f), text);
+    }
+
+    // Seats is how many humans a room holds: one when the computer has
+    // taken the other, two otherwise.
+    private static int Seats(RoomInfo room)
+    {
+        return room.vsAi ? 1 : 2;
     }
 
     private static string VictoryLabel(string condition)

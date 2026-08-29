@@ -27,6 +27,12 @@ public class BuildPanel : MonoBehaviour
     private Rect panelRect;
     private Rect productionRect;
 
+    // Selling is irreversible and hands back only half, so it takes two
+    // clicks: the first arms it for this building, the second goes through.
+    // Cleared whenever the selection moves, so an armed sell can never
+    // carry over to a building the player has since clicked away from.
+    private int sellArmedFor;
+
     private void Update()
     {
         if (Mouse.current == null)
@@ -43,7 +49,7 @@ public class BuildPanel : MonoBehaviour
     {
         DrawHud();
         DrawBuildMenu();
-        DrawProduction();
+        DrawSelectedBuilding();
     }
 
     private void DrawHud()
@@ -135,80 +141,121 @@ public class BuildPanel : MonoBehaviour
         }
     }
 
-    private void DrawProduction()
+    // The panel for whichever of your buildings is selected. Production
+    // controls are only part of it: a refinery makes nothing at all now
+    // that harvesters come off the war factory line, and it still has to
+    // be selectable and sellable.
+    private void DrawSelectedBuilding()
     {
-        BuildingView factory = SelectedFactory();
-        if (factory == null)
+        BuildingView building = SelectedBuilding();
+        if (building == null)
         {
             productionRect = Rect.zero;
+            sellArmedFor = 0;
             return;
         }
+        if (sellArmedFor != 0 && sellArmedFor != building.BuildingId)
+        {
+            sellArmedFor = 0;
+        }
 
-        BuildOption option = gameManager.FindBuildOption(factory.BuildingType);
+        BuildOption option = gameManager.FindBuildOption(building.BuildingType);
         string[] produces = option?.produces ?? new string[0];
-        if (produces.Length == 0)
-        {
-            productionRect = Rect.zero;
-            return;
-        }
 
-        float height = produces.Length * (ButtonHeight + 4f) + 108f;
+        // Laid out top-down from a running cursor rather than anchored to
+        // both edges: the panel's height now depends on what the building
+        // can do, and two anchors would have to agree about that twice.
+        float height = 30f + produces.Length * (ButtonHeight + 4f);
+        if (produces.Length > 0)
+        {
+            height += 104f; // primary flag, queue status, cancel
+        }
+        height += 32f; // sell
+
         productionRect = new Rect(Screen.width - PanelWidth - Margin, 50f, PanelWidth, height);
-        GUI.Box(productionRect, factory.BuildingType);
+        GUI.Box(productionRect, building.BuildingType);
 
-        // The queue belongs to the building *type*, not this building —
-        // every Barracks shows the same one.
-        QueueSnapshot queue = gameManager.FindQueue(factory.BuildingType);
+        float x = productionRect.x + 6f;
+        float width = PanelWidth - 12f;
+        float y = productionRect.y + 24f;
 
-        for (int i = 0; i < produces.Length; i++)
+        if (produces.Length > 0)
         {
-            string unitType = produces[i];
-            var buttonRect = new Rect(productionRect.x + 6f, productionRect.y + 24f + i * (ButtonHeight + 4f),
-                PanelWidth - 12f, ButtonHeight);
+            // The queue belongs to the building *type*, not this building —
+            // every Barracks shows the same one.
+            QueueSnapshot queue = gameManager.FindQueue(building.BuildingType);
 
-            // Show how many are on order, so queuing several gives visible
-            // feedback instead of looking like nothing happened. Only the
-            // head of the queue is actually building, so its type carries
-            // the count.
-            int queued = queue != null && queue.item == unitType ? queue.length : 0;
-            string label = queued > 0 ? $"Train {unitType}  x{queued}" : $"Train {unitType}";
-
-            if (GUI.Button(buttonRect, label))
+            foreach (string unitType in produces)
             {
-                gameManager.Send(new ClientCommand
+                // Show how many are on order, so queuing several gives
+                // visible feedback instead of looking like nothing
+                // happened. Only the head of the queue is actually
+                // building, so its type carries the count.
+                int queued = queue != null && queue.item == unitType ? queue.length : 0;
+                string label = queued > 0 ? $"Train {unitType}  x{queued}" : $"Train {unitType}";
+
+                if (GUI.Button(new Rect(x, y, width, ButtonHeight), label))
                 {
-                    type = "produce",
-                    buildingId = factory.BuildingId,
-                    itemType = unitType,
-                });
+                    gameManager.Send(new ClientCommand
+                    {
+                        type = "produce",
+                        buildingId = building.BuildingId,
+                        itemType = unitType,
+                    });
+                }
+                y += ButtonHeight + 4f;
             }
+
+            y += 4f;
+
+            // Which factory the finished unit walks out of. Only worth
+            // offering when there's more than one to choose between.
+            if (building.IsPrimary)
+            {
+                GUI.Label(new Rect(x, y, width, 22f), "  ★ Primary (units exit here)");
+            }
+            else if (GUI.Button(new Rect(x, y, width, 22f), "Set as primary"))
+            {
+                gameManager.Send(new ClientCommand { type = "setPrimary", buildingId = building.BuildingId });
+            }
+            y += 28f;
+
+            GUI.Label(new Rect(x, y, width, 18f), queue != null
+                ? $"Building {queue.item}  {Mathf.RoundToInt(queue.progress * 100f)}%"
+                : "Idle");
+            y += 22f;
+
+            if (GUI.Button(new Rect(x, y, width, 22f), "Cancel last order"))
+            {
+                gameManager.Send(new ClientCommand { type = "cancel", buildingId = building.BuildingId });
+            }
+            y += 30f;
         }
 
-        // Which factory the finished unit walks out of. Only worth
-        // offering when there's more than one to choose between.
-        var primaryRect = new Rect(productionRect.x + 6f, productionRect.yMax - 78f, PanelWidth - 12f, 22f);
-        if (factory.IsPrimary)
-        {
-            GUI.Label(primaryRect, "  ★ Primary (units exit here)");
-        }
-        else if (GUI.Button(primaryRect, "Set as primary"))
-        {
-            gameManager.Send(new ClientCommand { type = "setPrimary", buildingId = factory.BuildingId });
-        }
-
-        var statusRect = new Rect(productionRect.x + 6f, productionRect.yMax - 50f, PanelWidth - 12f, 18f);
-        GUI.Label(statusRect, queue != null
-            ? $"Building {queue.item}  {Mathf.RoundToInt(queue.progress * 100f)}%"
-            : "Idle");
-
-        var cancelRect = new Rect(productionRect.x + 6f, productionRect.yMax - 28f, PanelWidth - 12f, 22f);
-        if (GUI.Button(cancelRect, "Cancel last order"))
-        {
-            gameManager.Send(new ClientCommand { type = "cancel", buildingId = factory.BuildingId });
-        }
+        DrawSellButton(building, option, new Rect(x, y, width, 24f));
     }
 
-    private BuildingView SelectedFactory()
+    private void DrawSellButton(BuildingView building, BuildOption option, Rect rect)
+    {
+        int refund = (option?.cost ?? 0) / 2;
+        bool armed = sellArmedFor == building.BuildingId;
+
+        if (!GUI.Button(rect, armed ? $"Really sell? (+{refund})" : $"Sell  (+{refund})"))
+        {
+            return;
+        }
+
+        if (!armed)
+        {
+            sellArmedFor = building.BuildingId;
+            return;
+        }
+
+        gameManager.Send(new ClientCommand { type = "sell", buildingId = building.BuildingId });
+        sellArmedFor = 0;
+    }
+
+    private BuildingView SelectedBuilding()
     {
         int id = selectionHandler.SelectedBuildingId;
         if (id == 0)
