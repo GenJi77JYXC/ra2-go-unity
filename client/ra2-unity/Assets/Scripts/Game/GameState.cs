@@ -62,6 +62,13 @@ public class GameState
     public TileData[] tiles;
     public BuildOption[] buildMenu;
 
+    // oreCells names every cell that can hold ore and arrives once, with
+    // the map. ore carries the amounts in that same order and arrives
+    // every frame — pairing them by index is what keeps a live ore field
+    // affordable to broadcast.
+    public OreCellData[] oreCells;
+    public int[] ore;
+
     public UnitSnapshot[] units;
     public BuildingSnapshot[] buildings;
     public int money;
@@ -128,15 +135,39 @@ public class UnitSnapshot
     public int owner; // Phase 4: which player controls this unit
     public int hp;
     public int maxHp;
+
+    // Unit template name ("Tank", "Infantry", "Harvester"). Drives how the
+    // unit is drawn — until harvesters existed everything looked the same
+    // and the client never needed to know.
+    public string type;
 }
 
-// type is game.TerrainType as a raw int (Grass=0, Road=1, Water=2,
-// Cliff=3, Ore=4) — must stay in the same order as the Go server's enum.
+// TerrainType mirrors the Go server's enum and must stay in the same
+// order — it crosses the wire as a raw int.
+public enum TerrainType
+{
+    Grass = 0,
+    Road = 1,
+    Water = 2,
+    Cliff = 3,
+    Ore = 4,
+    OreDrill = 5,
+}
+
 [Serializable]
 public class TileData
 {
     public int type;
     public bool passable;
+}
+
+// OreCellData is one ore-field cell's position, sent once alongside the
+// map. Its amount is GameState.ore at the same index.
+[Serializable]
+public class OreCellData
+{
+    public int x;
+    public int y;
 }
 
 // Carries both lobby traffic ("listRooms", "createRoom", "joinRoom",

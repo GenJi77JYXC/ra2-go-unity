@@ -13,6 +13,14 @@ public class UnitView : MonoBehaviour
     private static readonly Color FriendlyColor = new(0.25f, 0.55f, 0.95f);
     private static readonly Color EnemyColor = new(0.85f, 0.2f, 0.2f);
 
+    // Harvesters are civilian machines parked in the middle of a fight, so
+    // they read as a duller, larger version of their owner's colour: same
+    // hue, so friend/foe is still the first thing you see, but obviously
+    // not a tank. Real per-unit art is a Phase 8 problem.
+    private const string HarvesterTemplate = "Harvester";
+    private const float HarvesterTint = 0.6f;
+    private const float HarvesterScale = 1.3f;
+
     [SerializeField] private SpriteRenderer bodySprite;
     [SerializeField] private HealthBar healthBar;
     [SerializeField] private SelectionCircle selectionCircle;
@@ -24,10 +32,22 @@ public class UnitView : MonoBehaviour
 
     // myPlayerId comes from the server's seat assignment rather than a
     // constant, so "friendly" means whoever is actually at the keyboard.
-    public void Initialize(int unitId, int owner, int myPlayerId)
+    public string Template { get; private set; }
+    public bool IsHarvester => Template == HarvesterTemplate;
+
+    public void Initialize(int unitId, int owner, int myPlayerId, string template)
     {
         UnitId = unitId;
         Owner = owner;
-        bodySprite.color = owner == myPlayerId ? FriendlyColor : EnemyColor;
+        Template = template ?? "";
+
+        Color color = owner == myPlayerId ? FriendlyColor : EnemyColor;
+        if (IsHarvester)
+        {
+            color *= HarvesterTint;
+            color.a = 1f;
+            transform.localScale *= HarvesterScale;
+        }
+        bodySprite.color = color;
     }
 }

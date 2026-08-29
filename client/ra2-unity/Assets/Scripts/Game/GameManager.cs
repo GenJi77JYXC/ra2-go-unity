@@ -138,6 +138,12 @@ public class GameManager : MonoBehaviour
             mapRenderer.Render(state);
             BuildMenu = state.buildMenu ?? new BuildOption[0];
         }
+        else
+        {
+            // The ore field is the one part of the map that moves, so it
+            // reshades every frame while the rest is drawn once.
+            mapRenderer.UpdateOre(state);
+        }
 
         Money = state.money;
         Power = state.power;
@@ -161,7 +167,7 @@ public class GameManager : MonoBehaviour
                 // see the setup instructions — so this is a plain
                 // GetComponent, not AddComponent.
                 view = Instantiate(unitPrefab).GetComponent<UnitView>();
-                view.Initialize(unit.id, unit.owner, MyPlayerId);
+                view.Initialize(unit.id, unit.owner, MyPlayerId, unit.type);
                 units[unit.id] = view;
             }
 

@@ -2,7 +2,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 
-// Editor-only utility. Phase 3 needs 5 placeholder terrain Tile assets (no
+// Editor-only utility. Generates the placeholder terrain Tile assets (no
 // real art). Each tile's texture is a diamond (transparent corners) sized
 // to exactly match the Grid's Cell Size (1, 0.5, 1) — a plain solid-color
 // rectangle would still have a 1x1-ish bounding box that overlaps its
@@ -28,6 +28,9 @@ public static class TerrainTileGenerator
         ("Water", new Color(0.2f, 0.45f, 0.85f)),
         ("Cliff", new Color(0.5f, 0.35f, 0.2f)),
         ("Ore", new Color(0.9f, 0.75f, 0.15f)),
+        // The drill is the fixture ore grows back from — dark and metallic
+        // so it stands out against the field it sits in the middle of.
+        ("OreDrill", new Color(0.28f, 0.3f, 0.34f)),
     };
 
     [MenuItem("Tools/RA2/Generate Terrain Tiles")]
@@ -54,7 +57,11 @@ public static class TerrainTileGenerator
 
             var tile = ScriptableObject.CreateInstance<Tile>();
             tile.sprite = sprite;
-            tile.color = Color.white; // color already baked into the texture
+
+            // White, because the colour is already baked into the texture —
+            // which also leaves the per-cell tint free for MapRenderer to
+            // shade ore cells by how much they still hold.
+            tile.color = Color.white;
 
             AssetDatabase.CreateAsset(tile, path);
             AssetDatabase.AddObjectToAsset(sprite, tile);
@@ -63,7 +70,8 @@ public static class TerrainTileGenerator
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log($"Generated 5 diamond terrain tiles in {OutputDir} — order for MapRenderer.tileAssets: Grass, Road, Water, Cliff, Ore.");
+        Debug.Log($"Generated {Terrains.Length} diamond terrain tiles in {OutputDir} — "
+            + "order for MapRenderer.tileAssets: Grass, Road, Water, Cliff, Ore, OreDrill.");
     }
 
     // A diamond is the Manhattan-distance-<=0.5 region of the rect,
