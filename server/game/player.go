@@ -2,16 +2,10 @@ package game
 
 import "math"
 
-const (
-	startingMoney = 5000
-
-	// passiveIncome stands in for ore harvesting, which no phase of the
-	// learning plan actually introduces — without some income you'd hit a
-	// hard wall a few structures into a session with no way to recover.
-	// Real RA2 economy (refineries, harvesters, ore fields) would replace
-	// this outright.
-	passiveIncome = 20 // credits per second
-)
+// startingMoney has to cover a power plant and a refinery (1700 of it)
+// with enough left to survive the ten seconds before the first harvester
+// load lands — there is no other income now.
+const startingMoney = 5000
 
 // Construction is a structure being built but not yet on the map. RA2
 // builds first and places second: the credits drain while it's in this
@@ -54,11 +48,10 @@ type Player struct {
 	Pending *Construction
 	Queues  map[string]*ProductionQueue
 
-	// fraction carries the sub-credit remainder between ticks. Both income
-	// (20/sec spread over 20 ticks) and construction charges (a build's
-	// cost spread across its whole build time) move less than a whole
-	// credit per tick, and truncating each one to an int would round them
-	// away to nothing. Kept in [0,1) by settle().
+	// fraction carries the sub-credit remainder between ticks: a build's
+	// cost is spread across its whole build time, so a single tick's
+	// charge is well under one credit and truncating it to an int would
+	// round it away to nothing. Kept in [0,1) by settle().
 	fraction float64
 }
 
@@ -79,11 +72,6 @@ func (p *Player) queue(category string) *ProductionQueue {
 		p.Queues[category] = q
 	}
 	return q
-}
-
-func (p *Player) addIncome(dt float64) {
-	p.fraction += passiveIncome * dt
-	p.settle()
 }
 
 // balance is the player's true worth including the sub-credit remainder.

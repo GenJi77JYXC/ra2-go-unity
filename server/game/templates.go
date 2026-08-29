@@ -14,6 +14,11 @@ type UnitTemplate struct {
 	Weapon    string // "" = unarmed
 	Cost      int
 	BuildTime float64 // seconds
+
+	// Harvester marks the units that drive themselves — see harvest.go.
+	// It's on the template rather than inferred from the name so a second
+	// harvesting unit later is a data change, not a code change.
+	Harvester bool
 }
 
 type WeaponTemplate struct {
@@ -42,8 +47,9 @@ type BuildingTemplate struct {
 }
 
 var unitTemplates = map[string]UnitTemplate{
-	"Infantry": {MaxHP: 50, Armor: "light", Weapon: "Rifle", Cost: 100, BuildTime: 3},
-	"Tank":     {MaxHP: 100, Armor: "heavy", Weapon: "TankCannon", Cost: 700, BuildTime: 8},
+	"Infantry":  {MaxHP: 50, Armor: "light", Weapon: "Rifle", Cost: 100, BuildTime: 3},
+	"Tank":      {MaxHP: 100, Armor: "heavy", Weapon: "TankCannon", Cost: 700, BuildTime: 8},
+	"Harvester": {MaxHP: 200, Armor: "heavy", Cost: 600, BuildTime: 6, Harvester: true},
 }
 
 var weaponTemplates = map[string]WeaponTemplate{
@@ -64,6 +70,15 @@ var buildingTemplates = map[string]BuildingTemplate{
 	"PowerPlant": {
 		MaxHP: 400, Armor: "heavy", Cost: 300, BuildTime: 5,
 		Width: 2, Height: 2, Power: 100,
+		Prerequisites: []string{"ConstructionYard"},
+	},
+	// The refinery is the only source of income, so it has to be reachable
+	// from a bare Construction Yard — but it draws power, which makes
+	// "power plant first or refinery first" the opening decision.
+	"OreRefinery": {
+		MaxHP: 600, Armor: "heavy", Cost: 1400, BuildTime: 10,
+		Width: 3, Height: 3, Power: -50,
+		Produces:      []string{"Harvester"},
 		Prerequisites: []string{"ConstructionYard"},
 	},
 	"Barracks": {

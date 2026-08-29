@@ -37,6 +37,11 @@ type Unit struct {
 	AttackTargetID int     `json:"-"`
 	FireCooldown   float64 `json:"-"`
 
+	// Harvest is non-nil only on harvesters, which run themselves off it
+	// (see harvest.go). A pointer rather than more fields on Unit, since
+	// nothing else in the game has any use for them.
+	Harvest *HarvestState `json:"-"`
+
 	// Cell is the cell the unit occupies. While InTransit it is walking
 	// from Cell to NextCell and holds *both* in the occupancy table — see
 	// World.arrive. X/Y stay the authoritative position for rendering and
@@ -63,8 +68,15 @@ type Unit struct {
 
 func newUnit(id int, x, y float64, owner int, template string) *Unit {
 	t := unitTemplates[template]
+
+	var harvest *HarvestState
+	if t.Harvester {
+		harvest = &HarvestState{}
+	}
+
 	return &Unit{
 		ID:       id,
+		Harvest:  harvest,
 		X:        x,
 		Y:        y,
 		Cell:     worldToCell(x, y),
@@ -203,6 +215,13 @@ type World struct {
 	// terrain lives on Map. See occupancy.go.
 	occupied map[cell]int
 
+	// ore is how much each field cell still holds, and oreGrowth is the
+	// countdown to the next top-up. Same split as occupied: Map knows
+	// which cells are ore field, World knows what's left in them. See
+	// harvest.go.
+	ore       map[cell]int
+	oreGrowth float64
+
 	// nextID is a single ID space shared by units and buildings, so a
 	// command naming an ID can never be ambiguous about which it meant.
 	nextID int
@@ -237,6 +256,7 @@ func NewWorld(victory string) *World {
 		Victory:  victory,
 		occupied: map[cell]int{},
 	}
+	w.fillOre()
 
 	for _, u := range []struct {
 		x, y  float64
@@ -267,14 +287,13 @@ func NewWorld(victory string) *World {
 func (w *World) Tick(dt float64) {
 	w.TickCount++
 
-	for _, p := range w.Players {
-		p.addIncome(dt)
-	}
+	w.growOre(dt)
 
 	for _, u := range w.Units {
 		w.updateUnit(u, dt)
 	}
 
+	w.updateHarvesters(dt)
 	w.updateCombat(dt)
 	w.removeDestroyed()
 
@@ -376,13 +395,21 @@ func (w *World) handlePlaceCommand(cmd Command) {
 	buildingType := player.Pending.Type
 
 	w.nextID++
-	w.Buildings = append(w.Buildings,
-		newBuilding(w.nextID, buildingType, cmd.Owner, cmd.CellX, cmd.CellY, true))
+	placed := newBuilding(w.nextID, buildingType, cmd.Owner, cmd.CellX, cmd.CellY, true)
+	w.Buildings = append(w.Buildings, placed)
 	player.Pending = nil
 
 	// The first factory of a type becomes the one units walk out of; later
 	// ones leave the flag where it is until the player moves it.
 	w.ensurePrimary(cmd.Owner, buildingType)
+
+	// A refinery arrives with a harvester, as in the original. Without it
+	// you'd pay 1400 for a building that earns nothing until you also pay
+	// 600 — and with no passive income, that's a hole a player who spent
+	// down to the last credit could never climb out of.
+	if buildingType == refineryType {
+		w.spawnUnit("Harvester", placed)
+	}
 }
 
 // handleProduceCommand queues a unit in the category queue belonging to
@@ -579,6 +606,12 @@ type Snapshot struct {
 	PendingReady    bool    `json:"pendingReady"`
 
 	Queues []QueueState `json:"queues"`
+
+	// Ore is how much every ore-field cell holds, in GameMap.OreCells
+	// order. The coordinates ship once with the initial snapshot; this is
+	// just the amounts, which is what makes sending the whole field every
+	// tick cheap enough to bother with.
+	Ore []int `json:"ore"`
 }
 
 // QueueState is one category's production status, keyed by the building
@@ -610,6 +643,7 @@ func (w *World) Snapshot(forOwner int) Snapshot {
 	}
 
 	return Snapshot{
+		Ore:             w.OreAmounts(),
 		Tick:            w.TickCount,
 		Units:           w.Units,
 		Buildings:       w.Buildings,
