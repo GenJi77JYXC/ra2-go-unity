@@ -53,6 +53,11 @@ type Room struct {
 	Name    string
 	Victory string // chosen by whoever created the room
 
+	// VsAI rooms seat the computer opposite the one human. It's fixed at
+	// creation rather than toggled later, because it decides both who may
+	// join and what "everyone is ready" means.
+	VsAI bool
+
 	mu      sync.Mutex
 	state   string
 	players []*RoomPlayer
@@ -63,7 +68,7 @@ type Room struct {
 	stop     chan struct{}
 }
 
-func newRoom(id int, name, victory string) *Room {
+func newRoom(id int, name, victory string, vsAI bool) *Room {
 	if !game.ValidVictoryCondition(victory) {
 		victory = game.VictoryBuildings
 	}
@@ -72,6 +77,7 @@ func newRoom(id int, name, victory string) *Room {
 		ID:       id,
 		Name:     name,
 		Victory:  victory,
+		VsAI:     vsAI,
 		state:    RoomWaiting,
 		commands: make(chan game.Command, 64),
 		stop:     make(chan struct{}),
@@ -88,7 +94,7 @@ func (r *Room) join(client *Client, name string) (*RoomPlayer, error) {
 	if r.state != RoomWaiting {
 		return nil, errRoomStarted
 	}
-	if len(r.players) >= maxPlayersPerRoom {
+	if len(r.players) >= r.humanSeats() {
 		return nil, errRoomFull
 	}
 
@@ -96,6 +102,16 @@ func (r *Room) join(client *Client, name string) (*RoomPlayer, error) {
 	player := &RoomPlayer{ID: r.nextID, Name: name, client: client}
 	r.players = append(r.players, player)
 	return player, nil
+}
+
+// humanSeats is how many people this room is waiting for. A match against
+// the computer starts as soon as its one human is ready — and only that
+// one may join, since the other seat is already spoken for.
+func (r *Room) humanSeats() int {
+	if r.VsAI {
+		return 1
+	}
+	return maxPlayersPerRoom
 }
 
 // leave removes a seat. A player dropping out of a match in progress ends
@@ -132,7 +148,7 @@ func (r *Room) setReady(player *RoomPlayer, ready bool) (started bool) {
 
 	player.Ready = ready
 
-	allReady := len(r.players) == maxPlayersPerRoom
+	allReady := len(r.players) == r.humanSeats()
 	for _, p := range r.players {
 		if !p.Ready {
 			allReady = false
@@ -146,6 +162,17 @@ func (r *Room) setReady(player *RoomPlayer, ready bool) (started bool) {
 
 	r.state = RoomPlaying
 	r.world = game.NewWorld(r.Victory)
+
+	// The computer takes every seat the world has that nobody claimed. It
+	// plays an ordinary player — same starting base, same rules, same
+	// ownership checks — so nothing downstream needs to know it isn't a
+	// person (see game/ai.go).
+	if r.VsAI {
+		for seat := len(r.players) + 1; seat <= maxPlayersPerRoom; seat++ {
+			r.world.AddAI(seat)
+			log.Printf("room %d: seat %d is the computer", r.ID, seat)
+		}
+	}
 	r.mu.Unlock()
 
 	go r.run()
@@ -286,6 +313,7 @@ func (r *Room) info(forPlayer *RoomPlayer) RoomInfo {
 		Name:    r.Name,
 		State:   r.state,
 		Victory: r.Victory,
+		VsAI:    r.VsAI,
 		Players: players,
 	}
 	if forPlayer != nil {
@@ -314,12 +342,12 @@ func NewRoomManager() *RoomManager {
 	return &RoomManager{rooms: map[int]*Room{}}
 }
 
-func (m *RoomManager) create(name, victory string) *Room {
+func (m *RoomManager) create(name, victory string, vsAI bool) *Room {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.nextID++
-	room := newRoom(m.nextID, name, victory)
+	room := newRoom(m.nextID, name, victory, vsAI)
 	m.rooms[room.ID] = room
 	log.Printf("room %d (%q) created, victory=%s", room.ID, name, room.Victory)
 	return room

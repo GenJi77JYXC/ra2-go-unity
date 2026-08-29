@@ -106,7 +106,7 @@ func (s *Server) handleMessage(client *Client, sess *session, cmd ClientCommand)
 		client.Send(mustMarshal(ServerMessage{Type: "rooms", Rooms: s.rooms.list()}))
 
 	case "createRoom":
-		room := s.rooms.create(roomName(cmd), cmd.Victory)
+		room := s.rooms.create(roomName(cmd), cmd.Victory, cmd.VsAI)
 		s.joinRoom(client, sess, room, cmd.PlayerName)
 
 	case "joinRoom":
@@ -143,7 +143,7 @@ func (s *Server) handleMessage(client *Client, sess *session, cmd ClientCommand)
 // differ between callers.
 func (s *Server) forwardGameCommand(sess *session, cmd ClientCommand) {
 	switch cmd.Type {
-	case "move", "attack", "build", "place", "produce", "cancel", "setPrimary":
+	case "move", "attackMove", "attack", "build", "place", "produce", "cancel", "setPrimary", "sell":
 	default:
 		return // unknown command type
 	}
