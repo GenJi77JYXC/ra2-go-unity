@@ -51,12 +51,19 @@ type PlayerInfo struct {
 // messages sent every second, since a 20x20 map's tile data would otherwise
 // dwarf the actual per-tick unit updates.
 type GameState struct {
-	Tick      int64              `json:"tick"`
-	IsInitial bool               `json:"isInitial"`
-	MapWidth  int                `json:"mapWidth,omitempty"`
-	MapHeight int                `json:"mapHeight,omitempty"`
-	Tiles     []TileData         `json:"tiles,omitempty"`
-	BuildMenu []BuildOption      `json:"buildMenu,omitempty"` // initial-only, like Tiles
+	Tick      int64         `json:"tick"`
+	IsInitial bool          `json:"isInitial"`
+	MapWidth  int           `json:"mapWidth,omitempty"`
+	MapHeight int           `json:"mapHeight,omitempty"`
+	Tiles     []TileData    `json:"tiles,omitempty"`
+	BuildMenu []BuildOption `json:"buildMenu,omitempty"` // initial-only, like Tiles
+
+	// OreCells names every cell that can hold ore, once, in the initial
+	// snapshot. Ore carries the amounts in that same order on every frame
+	// — the client needs both to shade a field by how rich it still is,
+	// but only the amounts actually change.
+	OreCells  []OreCellData      `json:"oreCells,omitempty"`
+	Ore       []int              `json:"ore,omitempty"`
 	Units     []UnitSnapshot     `json:"units"`
 	Buildings []BuildingSnapshot `json:"buildings"`
 	Money     int                `json:"money"`
@@ -111,6 +118,13 @@ type BuildingSnapshot struct {
 	IsPrimary bool `json:"isPrimary"`
 }
 
+// OreCellData is one ore-field cell's position. Sent once; the matching
+// entry in GameState.Ore is what moves.
+type OreCellData struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
 // TileData mirrors game.Tile. Type is game.TerrainType as a raw int
 // (Grass=0, Road=1, Water=2, Cliff=3, Ore=4) — the Unity-side enum must
 // stay in the same order.
@@ -126,6 +140,11 @@ type UnitSnapshot struct {
 	Owner int     `json:"owner"` // Phase 4: which player controls this unit
 	HP    int     `json:"hp"`
 	MaxHP int     `json:"maxHp"`
+
+	// Type is the unit template name. The client got by without it while
+	// every unit looked alike; harvesters have to be tellable from combat
+	// units at a glance, which is what forced it onto the wire.
+	Type string `json:"type"`
 }
 
 // ClientCommand is sent client -> server. It carries both lobby traffic

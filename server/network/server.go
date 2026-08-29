@@ -234,6 +234,7 @@ func toGameState(snapshot game.Snapshot) GameState {
 		PendingProgress: snapshot.PendingProgress,
 		PendingReady:    snapshot.PendingReady,
 		Queues:          toQueueSnapshots(snapshot.Queues),
+		Ore:             snapshot.Ore,
 	}
 }
 
@@ -256,7 +257,16 @@ func initialGameState(world *game.World, forOwner int) GameState {
 	state.MapHeight = m.Height
 	state.Tiles = tiles
 	state.BuildMenu = toBuildMenu()
+	state.OreCells = toOreCells(m.OreCells())
 	return state
+}
+
+func toOreCells(cells []game.OreCell) []OreCellData {
+	out := make([]OreCellData, len(cells))
+	for i, c := range cells {
+		out[i] = OreCellData{X: c.X, Y: c.Y}
+	}
+	return out
 }
 
 func toBuildMenu() []BuildOption {
@@ -310,7 +320,10 @@ func toBuildingSnapshots(buildings []*game.Building) []BuildingSnapshot {
 func toUnitSnapshots(units []*game.Unit) []UnitSnapshot {
 	out := make([]UnitSnapshot, len(units))
 	for i, u := range units {
-		out[i] = UnitSnapshot{ID: u.ID, X: u.X, Y: u.Y, Owner: u.Owner, HP: u.HP, MaxHP: u.MaxHP}
+		out[i] = UnitSnapshot{
+			ID: u.ID, X: u.X, Y: u.Y, Owner: u.Owner,
+			HP: u.HP, MaxHP: u.MaxHP, Type: u.Template,
+		}
 	}
 	return out
 }
