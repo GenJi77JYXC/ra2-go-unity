@@ -476,6 +476,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: b9f2566bd13a6814bae008c66d407829, type: 2}
   - {fileID: 11400000, guid: 70bbd75332d4c3a4dab2d29ccad44c69, type: 2}
   - {fileID: 11400000, guid: 3f3ddd3a2b599e144a1780efa69fc578, type: 2}
+  - {fileID: 11400000, guid: 76dc2f94aa8006643b78a2e9b6ad62dd, type: 2}
 --- !u!483693784 &1230525273
 TilemapRenderer:
   serializedVersion: 2
