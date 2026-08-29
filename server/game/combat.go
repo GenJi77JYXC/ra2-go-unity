@@ -54,6 +54,9 @@ func (w *World) findTarget(id int) combatTarget {
 // movement so a unit that just arrived in range this tick can still fire.
 func (w *World) updateCombat(dt float64) {
 	for _, u := range w.Units {
+		if u.AttackMove && u.AttackTargetID == 0 {
+			w.acquireTarget(u)
+		}
 		if u.AttackTargetID == 0 {
 			continue
 		}
@@ -69,11 +72,26 @@ func (w *World) updateCombat(dt float64) {
 		dist := math.Hypot(tx-u.X, ty-u.Y)
 
 		if dist > weapon.Range {
-			w.chase(u, tx, ty)
+			// An ordered attack pursues; one picked up in passing on an
+			// attack-move does not. Chasing everything it meets is how an
+			// attack-move column gets dragged off course one unit at a time.
+			if u.AttackMove {
+				u.AttackTargetID = 0
+			} else {
+				w.chase(u, tx, ty)
+			}
 			continue
 		}
 
-		u.stop() // in range: stop advancing, and don't resume afterwards
+		// Stop advancing. An ordered attack is done once it closes, so it
+		// drops its destination outright; an attack-move keeps its Goal and
+		// picks the march back up once the shooting stops — finishPath
+		// leaves it alone while AttackTargetID is set.
+		if u.AttackMove {
+			u.Path = nil
+		} else {
+			u.stop()
+		}
 
 		if u.FireCooldown > 0 {
 			u.FireCooldown -= dt
@@ -86,6 +104,44 @@ func (w *World) updateCombat(dt float64) {
 		u.FireCooldown = weapon.Cooldown
 
 		log.Printf("unit %d hit entity %d for %d damage", u.ID, target.EntityID(), damage)
+	}
+}
+
+// acquireTarget finds something for an attack-moving unit to shoot at:
+// the nearest enemy already inside weapon range. Range is the whole rule —
+// attack-move means "deal with what you run into", so nothing outside it
+// is any of this unit's business.
+func (w *World) acquireTarget(u *Unit) {
+	weaponName := unitTemplates[u.Template].Weapon
+	if weaponName == "" {
+		return
+	}
+	reach := weaponTemplates[weaponName].Range
+
+	var best combatTarget
+	bestDist := 0.0
+
+	consider := func(t combatTarget, owner int) {
+		if owner == u.Owner || !t.IsAlive() {
+			return
+		}
+		tx, ty := t.Position()
+		if d := math.Hypot(tx-u.X, ty-u.Y); d <= reach && (best == nil || d < bestDist) {
+			best, bestDist = t, d
+		}
+	}
+
+	for _, other := range w.Units {
+		if other.ID != u.ID {
+			consider(other, other.Owner)
+		}
+	}
+	for _, b := range w.Buildings {
+		consider(b, b.Owner)
+	}
+
+	if best != nil {
+		u.AttackTargetID = best.EntityID()
 	}
 }
 

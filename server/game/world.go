@@ -37,6 +37,13 @@ type Unit struct {
 	AttackTargetID int     `json:"-"`
 	FireCooldown   float64 `json:"-"`
 
+	// AttackMove marks a unit marching under an attack-move order: it
+	// shoots what comes into range along the way but won't be led off
+	// after it, and resumes the march once the shooting stops. The
+	// distinction only matters once a target is out of range, which is
+	// where an ordered attack pursues and this doesn't.
+	AttackMove bool `json:"-"`
+
 	// Harvest is non-nil only on harvesters, which run themselves off it
 	// (see harvest.go). A pointer rather than more fields on Unit, since
 	// nothing else in the game has any use for them.
@@ -154,6 +161,9 @@ func (w *World) finishPath(u *Unit, dt float64) {
 		u.HoldTime -= dt
 		return // just stepped aside; let the other unit through first
 	}
+	if u.AttackTargetID != 0 {
+		return // busy shooting; the march resumes when the target is gone
+	}
 	if !u.HasGoal {
 		return
 	}
@@ -222,9 +232,23 @@ type World struct {
 	ore       map[cell]int
 	oreGrowth float64
 
+	// AIs are the computer-controlled seats. They produce Commands and
+	// nothing else — see ai.go — so they run through HandleCommand on the
+	// same footing as a connected player.
+	AIs []*AIPlayer
+
 	// nextID is a single ID space shared by units and buildings, so a
 	// command naming an ID can never be ambiguous about which it meant.
 	nextID int
+}
+
+// AddAI hands a seat to the computer. The seat has to already exist in
+// Players — the AI plays an ordinary player, it doesn't create one.
+func (w *World) AddAI(owner int) {
+	if w.Players[owner] == nil {
+		return
+	}
+	w.AIs = append(w.AIs, NewAIPlayer(owner))
 }
 
 // addUnit creates a unit, gives it the next ID and registers the cell it
@@ -287,6 +311,15 @@ func NewWorld(victory string) *World {
 func (w *World) Tick(dt float64) {
 	w.TickCount++
 
+	// AI decisions land before anything moves, in the same place a
+	// connected player's drained commands do (see Room.drainCommands), so
+	// both kinds of player see identical ordering within a tick.
+	for _, ai := range w.AIs {
+		for _, cmd := range ai.Think(w, dt) {
+			w.HandleCommand(cmd)
+		}
+	}
+
 	w.growOre(dt)
 
 	for _, u := range w.Units {
@@ -339,6 +372,8 @@ func (w *World) HandleCommand(cmd Command) {
 	switch cmd.Type {
 	case "attack":
 		w.handleAttackCommand(cmd)
+	case "attackMove":
+		w.handleMoveCommand(cmd)
 	case "build":
 		w.handleBuildCommand(cmd)
 	case "place":
@@ -349,6 +384,8 @@ func (w *World) HandleCommand(cmd Command) {
 		w.handleCancelCommand(cmd)
 	case "setPrimary":
 		w.setPrimary(cmd.Owner, cmd.BuildingID)
+	case "sell":
+		w.sell(cmd.Owner, cmd.BuildingID)
 	default:
 		w.handleMoveCommand(cmd)
 	}
@@ -515,7 +552,11 @@ func (w *World) handleMoveCommand(cmd Command) {
 	targets := nearbyCells(w.Map, goal, len(movers), w.freeFor(movers...))
 
 	for i, u := range movers {
-		u.AttackTargetID = 0 // a fresh move order cancels any attack order
+		// A fresh move order cancels any attack order. attackMove is the
+		// same march with one difference — the unit is allowed to stop and
+		// shoot on the way — so it shares this handler outright.
+		u.AttackTargetID = 0
+		u.AttackMove = cmd.Type == "attackMove"
 
 		// Goal is set even if the path fails: the unit re-tries from
 		// finishPath, and a destination that's crowded right now may well
@@ -553,6 +594,7 @@ func (w *World) handleAttackCommand(cmd Command) {
 		}
 
 		u.AttackTargetID = targetID
+		u.AttackMove = false
 		u.stop() // let updateCombat's chase() path toward the target fresh
 	}
 }
