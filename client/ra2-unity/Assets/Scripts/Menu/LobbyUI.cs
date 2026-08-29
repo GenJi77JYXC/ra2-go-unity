@@ -8,6 +8,10 @@ public class LobbyUI : MonoBehaviour
 {
     [SerializeField] private string defaultServerUrl = "ws://localhost:8080/ws";
 
+    // Must match the names in server/game/maps.go.
+    private static readonly string[] MapNames = { "crossroads", "ridge" };
+    private static readonly string[] MapLabels = { "Crossroads", "Ridge" };
+
     // Must match the strings in server/game/victory.go.
     private static readonly string[] VictoryConditions = { "buildings", "conyard", "annihilation" };
     private static readonly string[] VictoryLabels =
@@ -20,6 +24,7 @@ public class LobbyUI : MonoBehaviour
     private LobbyController lobby;
     private string serverUrl;
     private int victoryIndex;
+    private int mapIndex;
 
     // Whether the next room created plays against the computer. Local UI
     // state — the room itself is told once, at creation.
@@ -109,6 +114,7 @@ public class LobbyUI : MonoBehaviour
             {
                 type = "createRoom",
                 victory = VictoryConditions[victoryIndex],
+                mapName = MapNames[mapIndex],
                 vsAi = vsComputer,
             });
         }
@@ -124,20 +130,27 @@ public class LobbyUI : MonoBehaviour
         // they sit together on the same row as the Create button above.
         vsComputer = GUI.Toggle(new Rect(panel.x + 304f, panel.y + 58f, 84f, 20f), vsComputer, " vs AI");
 
+        // Map, like the rule, belongs to the room and is fixed at creation.
+        GUI.Label(new Rect(panel.x + 16f, panel.y + 82f, 90f, 20f), "Map");
+        if (GUI.Button(new Rect(panel.x + 110f, panel.y + 80f, 278f, 22f), MapLabels[mapIndex]))
+        {
+            mapIndex = (mapIndex + 1) % MapNames.Length;
+        }
+
         RoomInfo[] rooms = controller.Rooms;
         if (rooms.Length == 0)
         {
-            GUI.Label(new Rect(panel.x + 16f, panel.y + 88f, 360f, 20f), "No rooms yet — create one.");
+            GUI.Label(new Rect(panel.x + 16f, panel.y + 112f, 360f, 20f), "No rooms yet — create one.");
         }
 
         for (int i = 0; i < rooms.Length; i++)
         {
             RoomInfo room = rooms[i];
-            var row = new Rect(panel.x + 16f, panel.y + 86f + i * 30f, 368f, 26f);
+            var row = new Rect(panel.x + 16f, panel.y + 110f + i * 30f, 368f, 26f);
 
             GUI.Label(new Rect(row.x, row.y + 3f, 260f, 20f),
                 $"{room.name}  [{room.state}]  {PlayerCount(room)}/{Seats(room)}"
-                + $"{(room.vsAi ? " vs AI" : "")}  · {VictoryLabel(room.victory)}");
+                + $"{(room.vsAi ? " vs AI" : "")}  · {MapLabel(room.mapName)}");
 
             // The server enforces this too; disabling the button just
             // avoids a pointless round trip. A room against the computer
@@ -158,7 +171,7 @@ public class LobbyUI : MonoBehaviour
         GUI.Label(new Rect(panel.x + 16f, panel.y + 30f, 360f, 20f),
             $"{room.name}  —  you are player {room.yourPlayerId}");
         GUI.Label(new Rect(panel.x + 16f, panel.y + 48f, 360f, 20f),
-            $"Defeat when {VictoryLabel(room.victory)} destroyed");
+            $"{MapLabel(room.mapName)}  ·  defeat when {VictoryLabel(room.victory)} destroyed");
 
         PlayerInfo[] players = room.players ?? new PlayerInfo[0];
         for (int i = 0; i < players.Length; i++)
@@ -213,6 +226,18 @@ public class LobbyUI : MonoBehaviour
     private static int Seats(RoomInfo room)
     {
         return room.vsAi ? 1 : 2;
+    }
+
+    private static string MapLabel(string name)
+    {
+        for (int i = 0; i < MapNames.Length; i++)
+        {
+            if (MapNames[i] == name)
+            {
+                return MapLabels[i];
+            }
+        }
+        return name;
     }
 
     private static string VictoryLabel(string condition)
