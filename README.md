@@ -147,6 +147,24 @@ AI 也会补采矿车和卖楼,但都有节制:采矿车只在**第一波攻势�
 实现见 [server/game/occupancy.go](server/game/occupancy.go),
 测试见 [server/game/movement_test.go](server/game/movement_test.go)。
 
+## 已知问题
+
+**群体攻击时只有前几个单位能打到目标。** 框选一批坦克攻击同一个目标,
+会看到只有前面两三辆在开火,后面的挤在一起,即使目标周围明明还有空地。
+
+原因是 `chase`(见 [server/game/combat.go](server/game/combat.go))**不知道自己是一群里的一个**:
+每个单位各自算"离目标最近的空格",而它们在同一 tick 算,那时周围全是空的,
+于是所有单位得到**同一个答案**、一起冲向同一格。移动指令没有这个问题——
+`handleMoveCommand` 会一次要 `len(movers)` 个不同的格子,分给每个单位一个;
+攻击这边没有对应的东西,因为 `updateCombat` 是逐个单位处理的。
+
+还有个加重因素:追击中的单位 `HasGoal` 为 false(有意为之,见 combat.go 的注释),
+而"绕开所有单位重新寻路"那一级恰好被 `HasGoal` 门控,所以它们比执行移动指令的
+单位少一条出路。
+
+实测:六辆坦克攻击一栋建筑,第 15 秒时仍然只有 1 辆在开火,目标被摧毁时还有
+2 辆停在 7 格开外。
+
 ## 快速开始
 
 ```bash

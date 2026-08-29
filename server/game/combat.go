@@ -161,6 +161,20 @@ func (w *World) acquireTarget(u *Unit) {
 // to step aside for someone), its Path empties and this simply re-issues
 // on the next tick against wherever the target is by then, which is more
 // current than a Goal recorded when the order was given.
+//
+// TODO(known gap): this has no idea it's one of a group. Order six tanks
+// onto one building and all six compute the same "nearest free cell" on
+// the same tick — they all set off for it, one arrives, and the rest
+// spend the fight shoving at a cell that is no longer free. Measured on a
+// six-tank order: one unit firing at fifteen seconds, and two still seven
+// cells out when the target fell.
+//
+// handleMoveCommand doesn't have this problem because it asks
+// nearbyCells for len(movers) distinct cells and hands one to each; there
+// is no equivalent here, since updateCombat walks units one at a time.
+// Chasers are also skipped by blocked()'s "re-path around everyone" tier,
+// which is gated on HasGoal — so they have one fewer way out than a unit
+// under a move order. See the known-issues note in README.
 func (w *World) chase(u *Unit, targetX, targetY float64) {
 	if len(u.Path) > 0 {
 		return
