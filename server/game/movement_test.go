@@ -33,11 +33,11 @@ func laneWorld(width int, bays ...int) *World {
 	}
 }
 
-// addUnitAt drops a tank on the center of a cell, the way every real spawn
+// addUnitAt drops a unit on the center of a cell, the way every real spawn
 // path does.
-func (w *World) addUnitAt(c cell, owner int) *Unit {
+func (w *World) addUnitAt(c cell, owner int, template string) *Unit {
 	p := cellCenterWorld(c)
-	return w.addUnit(p.X, p.Y, owner, "Tank")
+	return w.addUnit(p.X, p.Y, owner, template)
 }
 
 // order issues a move command for one unit to the center of a cell.
@@ -77,7 +77,7 @@ func TestGroupMoveSettlesWithoutOverlapping(t *testing.T) {
 
 	var ids []int
 	for x := 0; x < 5; x++ {
-		ids = append(ids, w.addUnitAt(cell{X: x, Y: 0}, 1).ID)
+		ids = append(ids, w.addUnitAt(cell{X: x, Y: 0}, 1, "Tank").ID)
 	}
 
 	w.HandleCommand(Command{Type: "move", Owner: 1, UnitIDs: ids, TargetX: 10.5, TargetY: 0.5})
@@ -111,7 +111,7 @@ func TestUnitsRouteAroundBuildings(t *testing.T) {
 	w := newTestWorld()
 	w.addBuilding(100, "ConstructionYard", 1, 2, 2) // covers x2..4, y2..4
 
-	u := w.addUnitAt(cell{X: 1, Y: 3}, 1)
+	u := w.addUnitAt(cell{X: 1, Y: 3}, 1, "Tank")
 	w.order(u, cell{X: 5, Y: 3})
 
 	for i := 0; i < 300; i++ {
@@ -131,7 +131,7 @@ func TestUnitsRouteAroundBuildings(t *testing.T) {
 // walked into. It still has to be able to walk out.
 func TestUnitUnderABuildingCanLeave(t *testing.T) {
 	w := newTestWorld()
-	u := w.addUnitAt(cell{X: 2, Y: 3}, 1)
+	u := w.addUnitAt(cell{X: 2, Y: 3}, 1, "Tank")
 	w.addBuilding(100, "ConstructionYard", 1, 2, 2) // swallows the unit's cell
 
 	w.order(u, cell{X: 8, Y: 3})
@@ -144,8 +144,8 @@ func TestUnitUnderABuildingCanLeave(t *testing.T) {
 
 func TestIdleBlockerStepsAside(t *testing.T) {
 	w := laneWorld(6, 3) // corridor along y=1, one bay above x=3
-	blocker := w.addUnitAt(cell{X: 3, Y: 1}, 1)
-	mover := w.addUnitAt(cell{X: 0, Y: 1}, 1)
+	blocker := w.addUnitAt(cell{X: 3, Y: 1}, 1, "Tank")
+	mover := w.addUnitAt(cell{X: 0, Y: 1}, 1, "Tank")
 
 	w.order(mover, cell{X: 5, Y: 1})
 	runTicks(t, w, 300)
@@ -163,8 +163,8 @@ func TestIdleBlockerStepsAside(t *testing.T) {
 // one it is, both journeys have to complete.
 func TestHeadOnCorridorBothArrive(t *testing.T) {
 	w := laneWorld(5, 3) // bay above x=3, where the yielding unit stands
-	east := w.addUnitAt(cell{X: 1, Y: 1}, 1)
-	west := w.addUnitAt(cell{X: 3, Y: 1}, 1)
+	east := w.addUnitAt(cell{X: 1, Y: 1}, 1, "Tank")
+	west := w.addUnitAt(cell{X: 3, Y: 1}, 1, "Tank")
 
 	w.order(east, cell{X: 4, Y: 1})
 	w.order(west, cell{X: 0, Y: 1})
@@ -185,9 +185,9 @@ func TestHeadOnCorridorBothArrive(t *testing.T) {
 // mover does will ever work.
 func TestPermanentlyBlockedUnitGivesUp(t *testing.T) {
 	w := laneWorld(4) // cells (0,1)..(3,1), no bays
-	mover := w.addUnitAt(cell{X: 0, Y: 1}, 1)
-	w.addUnitAt(cell{X: 1, Y: 1}, 1)
-	w.addUnitAt(cell{X: 2, Y: 1}, 1)
+	mover := w.addUnitAt(cell{X: 0, Y: 1}, 1, "Tank")
+	w.addUnitAt(cell{X: 1, Y: 1}, 1, "Tank")
+	w.addUnitAt(cell{X: 2, Y: 1}, 1, "Tank")
 
 	w.order(mover, cell{X: 3, Y: 1})
 	if !mover.HasGoal || len(mover.Path) == 0 {
@@ -213,7 +213,7 @@ func TestPermanentlyBlockedUnitGivesUp(t *testing.T) {
 // reserved mid-hop — or a wreck walls the map off permanently.
 func TestDestroyedUnitReleasesItsCells(t *testing.T) {
 	w := laneWorld(4)
-	victim := w.addUnitAt(cell{X: 0, Y: 1}, 1)
+	victim := w.addUnitAt(cell{X: 0, Y: 1}, 1, "Tank")
 
 	w.order(victim, cell{X: 3, Y: 1})
 	w.Tick(tickSeconds)
@@ -241,7 +241,7 @@ func TestDestroyedUnitReleasesItsCells(t *testing.T) {
 func TestAttackerClosesOnABuilding(t *testing.T) {
 	w := newTestWorld()
 	target := w.addBuilding(100, "ConstructionYard", 2, 10, 10)
-	attacker := w.addUnitAt(cell{X: 1, Y: 10}, 1)
+	attacker := w.addUnitAt(cell{X: 1, Y: 10}, 1, "Tank")
 
 	w.HandleCommand(Command{
 		Type: "attack", Owner: 1,
@@ -264,8 +264,8 @@ func TestAttackerClosesOnABuilding(t *testing.T) {
 // stands on — so the attacker has to settle for a neighbouring one.
 func TestAttackerClosesOnAUnit(t *testing.T) {
 	w := newTestWorld()
-	prey := w.addUnitAt(cell{X: 12, Y: 10}, 2)
-	attacker := w.addUnitAt(cell{X: 1, Y: 10}, 1)
+	prey := w.addUnitAt(cell{X: 12, Y: 10}, 2, "Tank")
+	attacker := w.addUnitAt(cell{X: 1, Y: 10}, 1, "Tank")
 
 	w.HandleCommand(Command{
 		Type: "attack", Owner: 1,
