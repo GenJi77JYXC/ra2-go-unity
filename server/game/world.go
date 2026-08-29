@@ -263,47 +263,65 @@ func (w *World) addUnit(x, y float64, owner int, template string) *Unit {
 	return u
 }
 
-// NewWorld builds a starting world: 3 player-owned tanks and 2 enemy tanks
-// on either side of the Phase 3 test map's cliff wall, so a Phase 4 attack
-// order has to path around the same obstacle a move order would, plus a
-// pre-built Construction Yard per side to seed Phase 5's tech tree. Owner 1
-// is hardcoded as "the player" and Owner 2 as "the enemy" until Phase 6
-// adds real multiplayer identity.
-func NewWorld(victory string) *World {
+// startingTanks is what each side opens with. Both sides get the same
+// number: the old 3-versus-2 was an artefact of hand-placed coordinates,
+// and it matters now that the AI counts idle tanks to decide when to
+// attack.
+const startingTanks = 2
+
+// NewWorld builds a starting world on the named map. Both seats get a
+// Construction Yard on the spot the map marks for them and a couple of
+// tanks beside it — where that is comes from the map, so adding a new one
+// is a matter of drawing it (see maps.go).
+func NewWorld(victory, mapName string) *World {
 	if !ValidVictoryCondition(victory) {
 		victory = VictoryBuildings
 	}
 
 	w := &World{
-		Map:      NewTestMap(),
+		Map:      NewMap(mapName),
 		Players:  map[int]*Player{1: newPlayer(1), 2: newPlayer(2)},
 		Victory:  victory,
 		occupied: map[cell]int{},
 	}
 	w.fillOre()
 
-	for _, u := range []struct {
-		x, y  float64
-		owner int
-	}{
-		{0.5, 0.5, 1}, {1.5, 0.5, 1}, {2.5, 0.5, 1},
-		{15.5, 15.5, 2}, {17.5, 15.5, 2},
-	} {
-		w.addUnit(u.x, u.y, u.owner, "Tank")
+	for owner := 1; owner <= 2; owner++ {
+		w.seat(owner)
 	}
-
-	for _, b := range []struct {
-		cellX, cellY int
-		owner        int
-	}{
-		{1, 2, 1},
-		{16, 11, 2},
-	} {
-		w.nextID++
-		w.Buildings = append(w.Buildings, newBuilding(w.nextID, "ConstructionYard", b.owner, b.cellX, b.cellY, true))
-	}
-
 	return w
+}
+
+// seat plants one player's opening base.
+func (w *World) seat(owner int) {
+	start, ok := w.Map.Start(owner)
+	if !ok {
+		return
+	}
+
+	w.nextID++
+	yard := newBuilding(w.nextID, "ConstructionYard", owner, start.X, start.Y, true)
+	w.Buildings = append(w.Buildings, yard)
+
+	// Tanks go beside the yard, on the same side finished units walk out
+	// of. freeFor is re-consulted per candidate rather than snapshotted,
+	// because each tank placed makes the next cell unavailable.
+	t := buildingTemplates[yard.Type]
+	exit := cell{X: start.X + t.Width, Y: start.Y}
+	free := w.freeFor()
+
+	placed := 0
+	for _, c := range nearbyCells(w.Map, exit, startingTanks*4, free) {
+		if placed >= startingTanks {
+			break
+		}
+		if !free(c.X, c.Y) {
+			continue // padding from nearbyCells, or a cell just taken
+		}
+		p := cellCenterWorld(c)
+		w.addUnit(p.X, p.Y, owner, "Tank")
+		placed++
+	}
 }
 
 // Tick advances the simulation by one step of length dt seconds (called

@@ -31,7 +31,8 @@ type RoomInfo struct {
 	Name         string       `json:"name"`
 	State        string       `json:"state"`   // "waiting", "playing", "finished"
 	Victory      string       `json:"victory"` // "buildings", "conyard", "annihilation"
-	VsAI         bool         `json:"vsAi"`    // the other seat is the computer
+	MapName      string       `json:"mapName"`
+	VsAI         bool         `json:"vsAi"` // the other seat is the computer
 	Players      []PlayerInfo `json:"players"`
 	YourPlayerID int          `json:"yourPlayerId,omitempty"`
 }
@@ -159,6 +160,7 @@ type ClientCommand struct {
 	// lobby
 	RoomID     int    `json:"roomId"`
 	Victory    string `json:"victory"` // createRoom only
+	MapName    string `json:"mapName"` // createRoom only
 	VsAI       bool   `json:"vsAi"`    // createRoom only
 	PlayerName string `json:"playerName"`
 	Ready      bool   `json:"ready"`

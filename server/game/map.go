@@ -48,6 +48,12 @@ type GameMap struct {
 	// part of the wire format and must not be rearranged after the initial
 	// snapshot goes out.
 	oreCells []cell
+
+	// starts maps a player number to where their Construction Yard goes.
+	// Keeping it on the map is what stopped the layout and the spawn
+	// coordinates from being two separate pieces of hardcoding that had to
+	// agree (see maps.go).
+	starts map[int]cell
 }
 
 // oreDrill regrows ore in the cells around it. field is pre-sorted by
@@ -80,43 +86,6 @@ func (m *GameMap) InBounds(x, y int) bool {
 
 func (m *GameMap) PassableAt(x, y int) bool {
 	return m.InBounds(x, y) && m.Tiles[y][x].Passable
-}
-
-// NewTestMap builds a small hand-authored 20x20 map for Phase 3: a lake and
-// a cliff wall (each with gaps at the ends, not fully sealed off) so there's
-// actually something for A* to route around, plus a cosmetic road strip.
-func NewTestMap() *GameMap {
-	const w, h = 20, 20
-	m := &GameMap{Width: w, Height: h, Tiles: make([][]Tile, h)}
-
-	for y := 0; y < h; y++ {
-		m.Tiles[y] = make([]Tile, w)
-		for x := 0; x < w; x++ {
-			m.Tiles[y][x] = Tile{Type: Grass, Passable: true}
-		}
-	}
-
-	for y := 6; y < 12; y++ {
-		for x := 4; x < 10; x++ {
-			m.Tiles[y][x] = Tile{Type: Water, Passable: false}
-		}
-	}
-
-	for y := 2; y < 16; y++ {
-		m.Tiles[y][14] = Tile{Type: Cliff, Passable: false}
-	}
-
-	for x := 0; x < w; x++ {
-		m.Tiles[16][x] = Tile{Type: Road, Passable: true}
-	}
-
-	// One ore field per side, each roughly as far from its owner's
-	// Construction Yard as the other's is, and both clear of the lake, the
-	// cliff and the two pre-placed bases.
-	m.addOreDrill(cell{X: 7, Y: 2}, oreFieldRadius)
-	m.addOreDrill(cell{X: 17, Y: 6}, oreFieldRadius)
-
-	return m
 }
 
 // oreFieldRadius is how far ore spreads around a drill, as a square

@@ -52,6 +52,7 @@ type Room struct {
 	ID      int
 	Name    string
 	Victory string // chosen by whoever created the room
+	MapName string // likewise; both are fixed once the room exists
 
 	// VsAI rooms seat the computer opposite the one human. It's fixed at
 	// creation rather than toggled later, because it decides both who may
@@ -68,15 +69,19 @@ type Room struct {
 	stop     chan struct{}
 }
 
-func newRoom(id int, name, victory string, vsAI bool) *Room {
+func newRoom(id int, name, victory, mapName string, vsAI bool) *Room {
 	if !game.ValidVictoryCondition(victory) {
 		victory = game.VictoryBuildings
+	}
+	if !game.ValidMapName(mapName) {
+		mapName = game.DefaultMapName
 	}
 
 	return &Room{
 		ID:       id,
 		Name:     name,
 		Victory:  victory,
+		MapName:  mapName,
 		VsAI:     vsAI,
 		state:    RoomWaiting,
 		commands: make(chan game.Command, 64),
@@ -161,7 +166,7 @@ func (r *Room) setReady(player *RoomPlayer, ready bool) (started bool) {
 	}
 
 	r.state = RoomPlaying
-	r.world = game.NewWorld(r.Victory)
+	r.world = game.NewWorld(r.Victory, r.MapName)
 
 	// The computer takes every seat the world has that nobody claimed. It
 	// plays an ordinary player — same starting base, same rules, same
@@ -313,6 +318,7 @@ func (r *Room) info(forPlayer *RoomPlayer) RoomInfo {
 		Name:    r.Name,
 		State:   r.state,
 		Victory: r.Victory,
+		MapName: r.MapName,
 		VsAI:    r.VsAI,
 		Players: players,
 	}
@@ -342,14 +348,14 @@ func NewRoomManager() *RoomManager {
 	return &RoomManager{rooms: map[int]*Room{}}
 }
 
-func (m *RoomManager) create(name, victory string, vsAI bool) *Room {
+func (m *RoomManager) create(name, victory, mapName string, vsAI bool) *Room {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.nextID++
-	room := newRoom(m.nextID, name, victory, vsAI)
+	room := newRoom(m.nextID, name, victory, mapName, vsAI)
 	m.rooms[room.ID] = room
-	log.Printf("room %d (%q) created, victory=%s", room.ID, name, room.Victory)
+	log.Printf("room %d (%q) created, map=%s victory=%s", room.ID, name, room.MapName, room.Victory)
 	return room
 }
 

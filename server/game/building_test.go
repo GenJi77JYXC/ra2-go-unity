@@ -6,7 +6,7 @@ import "testing"
 // test can set up exactly the situation it cares about.
 func newTestWorld() *World {
 	return &World{
-		Map:     NewTestMap(),
+		Map:     newFixtureMap(),
 		Players: map[int]*Player{1: newPlayer(1), 2: newPlayer(2)},
 	}
 }

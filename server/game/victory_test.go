@@ -6,7 +6,7 @@ import "testing"
 // holding a Construction Yard and one unit.
 func victoryWorld(condition string) *World {
 	w := &World{
-		Map:     NewTestMap(),
+		Map:     newFixtureMap(),
 		Players: map[int]*Player{1: newPlayer(1), 2: newPlayer(2)},
 		Victory: condition,
 	}
@@ -106,7 +106,7 @@ func TestSimultaneousWipeoutIsADraw(t *testing.T) {
 }
 
 func TestUnknownConditionFallsBackToDefault(t *testing.T) {
-	w := NewWorld("not-a-real-rule")
+	w := NewWorld("not-a-real-rule", DefaultMapName)
 	if w.Victory != VictoryBuildings {
 		t.Fatalf("want fallback to %q, got %q", VictoryBuildings, w.Victory)
 	}

@@ -280,10 +280,15 @@ func (ai *AIPlayer) assess(w *World) aiView {
 		}
 	}
 
-	// Pick a power plant to sell, if losing one wouldn't brown the base
-	// out. Checked here rather than at sell time so the goal's priority and
-	// its action agree on what's available.
-	if surplus := buildingTemplates["PowerPlant"].Power; v.buildings["PowerPlant"] > 1 && v.power >= surplus {
+	// Pick a power plant to sell, if losing one leaves a whole plant's
+	// worth of headroom still spare. Checked here rather than at sell time
+	// so the goal's priority and its action agree on what's available.
+	//
+	// Two plants' worth, not one: selling down to exactly zero surplus
+	// means the next structure browns the base out and the AI buys back at
+	// full price what it just sold at half. Requiring headroom is also
+	// what stops it selling twice in a row while it's still broke.
+	if plant := buildingTemplates["PowerPlant"].Power; v.buildings["PowerPlant"] > 1 && v.power >= 2*plant {
 		for _, b := range w.Buildings {
 			if b.Owner == ai.Owner && b.Type == "PowerPlant" && b.IsBuilt {
 				v.surplusPower = b.ID
@@ -586,12 +591,37 @@ func (ai *AIPlayer) placeSpot(w *World, buildingType string) (cell, bool) {
 	origin := cell{X: yard.CellX, Y: yard.CellY}
 	for radius := 2; radius <= aiBuildRadius; radius++ {
 		for _, c := range ringCells(origin, radius) {
-			if w.canPlace(buildingType, c.X, c.Y) {
+			if w.roomToBuild(buildingType, c.X, c.Y) {
 				return c, true
 			}
 		}
 	}
 	return cell{}, false
+}
+
+// roomToBuild is canPlace plus a clear cell all the way around the
+// footprint, so the AI's base always has lanes through it.
+//
+// Without the margin it packs structures flush against each other, and a
+// base packed solid can seal a unit into a pocket with no way out —
+// canPlace deliberately ignores units, so nothing stops it. When the unit
+// in question is the harvester, that ends the AI's economy for the rest
+// of the match, silently: it sits full of ore a cell away from the
+// refinery it can't reach.
+func (w *World) roomToBuild(buildingType string, cellX, cellY int) bool {
+	if !w.canPlace(buildingType, cellX, cellY) {
+		return false
+	}
+
+	t := buildingTemplates[buildingType]
+	for y := cellY - 1; y <= cellY+t.Height; y++ {
+		for x := cellX - 1; x <= cellX+t.Width; x++ {
+			if w.buildingAt(x, y) != nil {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // aiBuildRadius bounds the search for somewhere to build. Far enough to

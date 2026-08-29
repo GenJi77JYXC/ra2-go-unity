@@ -4,7 +4,7 @@ import "testing"
 
 // aiWorld is a standard match with the computer at seat 2.
 func aiWorld() *World {
-	w := NewWorld("buildings")
+	w := NewWorld("buildings", DefaultMapName)
 	w.AddAI(2)
 	return w
 }
@@ -314,11 +314,16 @@ func TestAISellsOnlyPowerItCanSpare(t *testing.T) {
 	w.Players[2].Money = 0
 	w.run(20, nil)
 
-	if got := w.countFor(2, "PowerPlant"); got >= before {
-		t.Fatalf("AI kept all %d power plants while broke with power to spare", got)
+	after := w.countFor(2, "PowerPlant")
+	if after >= before {
+		t.Fatalf("AI kept all %d power plants while broke with power to spare", before)
 	}
-	if w.Players[2].Money <= 0 {
-		t.Error("selling brought in nothing")
+	// Deliberately not asserting on the balance: the refund lands and is
+	// spent again within the same few seconds, because being broke is what
+	// prompted the sale in the first place.
+	if before-after > 1 {
+		t.Errorf("AI sold %d power plants at once; it only ever needs the one "+
+			"to get unstuck", before-after)
 	}
 	if p := w.NetPower(2); p < 0 {
 		t.Errorf("AI sold itself into a brownout (power %d) — the surplus "+

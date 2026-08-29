@@ -106,7 +106,7 @@ func (s *Server) handleMessage(client *Client, sess *session, cmd ClientCommand)
 		client.Send(mustMarshal(ServerMessage{Type: "rooms", Rooms: s.rooms.list()}))
 
 	case "createRoom":
-		room := s.rooms.create(roomName(cmd), cmd.Victory, cmd.VsAI)
+		room := s.rooms.create(roomName(cmd), cmd.Victory, cmd.MapName, cmd.VsAI)
 		s.joinRoom(client, sess, room, cmd.PlayerName)
 
 	case "joinRoom":
